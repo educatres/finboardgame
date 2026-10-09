@@ -105,6 +105,35 @@ h1,h2,h3,p{margin-top:0}h1,h2,h3{letter-spacing:-.025em}h1{font-size:clamp(38px,
 @media(max-width:960px){.home-page{grid-template-columns:1fr;gap:34px;padding:44px 2% 68px}.home-hero{position:static;padding-top:0}.home-hero h1{font-size:clamp(40px,6vw,60px)}.home-hero>p:not(.eyebrow):not(.home-status){max-width:680px}}
 @media(max-width:760px){.topbar{flex-wrap:wrap;padding:10px 0}.top-actions{width:100%;justify-content:space-between;flex-wrap:wrap}.home-page{padding:40px 0 60px}.home-hero>p:not(.eyebrow):not(.home-status){font-size:16px}.home-step{padding:22px 0}.home-step h2{font-size:18px}.home-step p{font-size:13px}.home-formula{margin-left:0}.home-roles{margin-top:24px}.home-role-grid{grid-template-columns:1fr}.home-role-story{min-height:0}}
 @media(max-width:440px){.home-role{padding:21px 18px 17px}.home-role-totals strong{font-size:17px}.home-role-flows{grid-template-columns:1fr;gap:16px}}
+.business-grid{grid-template-areas:"board side" "players players"}
+.business-grid>.board-panel{grid-area:board;min-width:0}
+.business-grid>.side-stack{grid-area:side;min-width:0}
+.business-grid>.player-area{grid-area:players;min-width:0}
+@media(max-width:1100px){.business-grid{grid-template-areas:"board" "side" "players"}}
+@media(min-width:1440px){
+  .business-grid{grid-template-columns:minmax(245px,270px) minmax(0,1fr) minmax(300px,330px);grid-template-areas:"players board side";align-items:start}
+  .player-area .player-heading{display:block;margin:0 0 13px}
+  .player-area .player-heading h2{font-size:22px}
+  .player-area .section-hint{display:block;margin-top:5px;font-size:10px}
+  .player-area .player-grid{grid-template-columns:1fr;gap:10px}
+  .player-area .player-card{padding:12px 13px}
+  .player-area .player-card-head{align-items:center}
+  .player-area .player-identity{gap:7px;min-width:0}
+  .player-area .role-icon{width:30px;height:30px;flex:none;font-size:16px}
+  .player-area .player-card h3{font-size:14px}
+  .player-area .player-card small{font-size:9px}
+  .player-area .player-card .position-label{font-size:9px;padding:4px 6px}
+  .player-area .wealth-line{align-items:center;padding:10px 0 8px}
+  .player-area .wealth-line span{font-size:10px}
+  .player-area .wealth-line strong{font-size:19px}
+  .player-area .finance-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;padding:10px 0}
+  .player-area .finance-stat span{font-size:9px}
+  .player-area .finance-stat strong{font-size:13px;margin-top:2px}
+  .player-area .event-impact{padding-top:10px}
+  .player-area .event-impact-head{font-size:10px;margin-bottom:7px}
+  .player-area .effect-entry{font-size:10px;margin-bottom:5px}
+  .player-area .finance-details{margin-top:8px;padding-top:7px}
+}
 .brand .round-badge{width:68px;height:60px;flex:none;border-radius:10px}
 .brand .round-badge span,.brand .round-badge small{font-size:8px;line-height:1.1}
 .brand .round-badge strong{font-size:25px;line-height:1}
