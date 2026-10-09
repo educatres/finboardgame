@@ -446,7 +446,10 @@ function currentCard(){
   return key===dismissedCardKey?null:{card,key,event:event(card.eventId)};
 }
 function cardCenter(){
-  if(!animation&&state.phase==='draw')return `<div class="card-scene"><p class="card-hint">停在事件格 · 輪到你抽卡</p><button class="draw-deck" type="button" data-action="draw-card" aria-label="點擊抽事件卡"><span class="deck-shadow" aria-hidden="true"></span><span class="deck-back"><span>✦</span><strong>事件卡</strong><small>點一下抽卡</small></span></button><p class="card-instruction">卡片正在洗牌，點擊卡背翻開結果</p></div>`;
+  if(!animation&&state.phase==='draw'){
+    const scope=BOARD[currentPlayer().position].type;
+    return `<div class="card-scene scope-${scope}"><p class="card-hint">停在${scopes[scope]}格 · 輪到你抽卡</p><button class="draw-deck" type="button" data-action="draw-card" aria-label="點擊抽${scopes[scope]}卡"><span class="deck-shadow" aria-hidden="true"></span><span class="deck-back"><span>✦</span><strong>${scopes[scope]}</strong><small>點一下抽卡</small></span></button><p class="card-instruction">卡片正在洗牌，點擊卡背翻開結果</p></div>`;
+  }
   const shown=!animation&&currentCard();
   if(shown){
     const {card,event:e}=shown;
