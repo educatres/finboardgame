@@ -1,0 +1,293 @@
+import {ROLES,METRICS,METRIC_LABELS,GLOBAL_EVENTS,PERSONAL_EVENTS,SECTOR_EVENTS,ALL_EVENTS,FED_RULES,BOARD} from './data.js';
+import {createGame,rollDice,movementPath,endTurn,adjustStaff,issueLoan,repayLoan,updateBadLoans,financials,companyPosition,effectBreakdown,eventRemaining,makeSnapshot,getEconomicSnapshot,getFedRuleEvaluations,getFedDecision,exportGame,importGame} from './engine.js';
+import {syncInfo,isNewerGame} from './sync.js';
+
+const $=s=>document.querySelector(s),h=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=n=>Math.round(n).toLocaleString('zh-TW'),decimal=(n,d=1)=>n===null||n===undefined?'—（資料不足）':Number(n).toFixed(d),signed=n=>`${n>=0?'+':'−'}${money(Math.abs(n))}`;
+const colors=['#0f9688','#5979b0','#ce9460','#aa6b91'];
+const scopes={global:'全球事件',personal:'個人事件',sector:'產業事件'};
+const scopeColor={global:'#cc6d61',personal:'#597bae',sector:'#ca9451'};
+const role=id=>ROLES.find(x=>x.id===id),event=id=>ALL_EVENTS.find(x=>x.id===id);
+const storageKey='economy-board-v1';
+const viewKey='economy-board-view-v1';
+const tabId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;
+let channel=null;
+try{if('BroadcastChannel' in globalThis)channel=new BroadcastChannel(storageKey)}catch{}
+let state=null,tab='business',snapshotSelection='latest',setupPlayers=[{name:'玩家 1',roleId:'auto'},{name:'玩家 2',roleId:'electronics'}],toastTimer,resetAt=0;
+let animation=null,animationSerial=0;
+const MOVE_MS=1000;
+try{const view=JSON.parse(sessionStorage.getItem(viewKey));if(['business','events','dashboard','fed','history'].includes(view?.tab))tab=view.tab;if(typeof view?.snapshotSelection==='string')snapshotSelection=view.snapshotSelection}catch{}
+function rememberView(){try{sessionStorage.setItem(viewKey,JSON.stringify({tab,snapshotSelection}))}catch{}}
+
+function notify(message){const el=$('#toast');el.textContent=message;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3200)}
+function newGameId(){return globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`}
+function prepareNewSession(game){const previous=syncInfo(state);game.sync={gameId:newGameId(),revision:0,updatedAt:Math.max(Date.now(),(previous?.updatedAt||0)+1,resetAt+1),writerId:tabId}}
+function readStored(){try{const raw=localStorage.getItem(storageKey);return raw?importGame(raw):null}catch{return undefined}}
+function cancelAnimation(){animationSerial++;animation=null}
+function save(){
+  if(!state)return;
+  if(!state.sync)prepareNewSession(state);
+  state.sync.revision++;
+  state.sync.updatedAt=Math.max(Date.now(),state.sync.updatedAt+1);
+  state.sync.writerId=tabId;
+  try{localStorage.setItem(storageKey,exportGame(state));$('#save-status').textContent='多頁籤已同步'}catch{$('#save-status').textContent=channel?'即時同步中；請匯出備份':'本機儲存不可用，請匯出備份'}
+  try{channel?.postMessage({type:'state',writerId:tabId,game:state})}catch{}
+}
+function clearSave(){
+  const updatedAt=Math.max(Date.now(),(syncInfo(state)?.updatedAt||0)+1,resetAt+1);
+  resetAt=updatedAt;
+  try{localStorage.removeItem(storageKey)}catch{}
+  try{channel?.postMessage({type:'reset',updatedAt,writerId:tabId})}catch{}
+}
+function adoptShared(incoming){
+  if(!isNewerGame(incoming,state))return false;
+  const previous=state;
+  const sharedRoll=previous&&syncInfo(previous).gameId===syncInfo(incoming).gameId&&previous.round===incoming.round&&previous.phase==='roll'&&incoming.phase==='manage'&&previous.turnIndex===incoming.turnIndex&&Number.isInteger(incoming.dice);
+  const from=sharedRoll?previous.players[previous.turnIndex].position:null;
+  cancelAnimation();state=incoming;render();
+  $('#save-status').textContent='已從其他頁籤同步';
+  if(sharedRoll)beginRollAnimation({playerId:incoming.players[incoming.turnIndex].id,from,dice:incoming.dice,reels:incoming.reels},false);
+  return true;
+}
+function ensureFresh(){
+  const stored=readStored();
+  if(stored===null&&state){cancelAnimation();state=null;render();notify('其他頁籤已開始新遊戲，畫面已更新。');return false}
+  if(stored&&isNewerGame(stored,state)){adoptShared(stored);notify('對局已由其他頁籤更新，請確認目前回合後再操作。');return false}
+  return true;
+}
+async function withGameLock(work){
+  if(globalThis.navigator?.locks?.request)return navigator.locks.request(`${storageKey}-write`,{mode:'exclusive'},work);
+  return work();
+}
+async function run(fn){
+  if(animation)return;
+  try{await withGameLock(()=>{if(!ensureFresh())return;fn();save();render()})}
+  catch(e){notify(e.message||'操作失敗')}
+}
+
+function renderSetup(){
+  $('#setup-players').innerHTML=setupPlayers.map((p,i)=>`<div class="setup-player"><span class="player-numeral">${i+1}</span><input data-setup-name="${i}" aria-label="玩家 ${i+1} 名稱" maxlength="16" value="${h(p.name)}"><select data-setup-role="${i}" aria-label="玩家 ${i+1} 企業">${ROLES.map(r=>`<option value="${r.id}" ${r.id===p.roleId?'selected':''}>${h(r.name)}</option>`).join('')}</select><button class="remove-player" data-remove-player="${i}" type="button" aria-label="移除玩家 ${i+1}" ${setupPlayers.length<=2?'disabled':''}>×</button></div>`).join('');
+  $('#add-player').disabled=setupPlayers.length>=4;
+}
+function currentPlayer(){return state?.players[state.turnIndex]}
+function boardCoords(i){if(i<=6)return [1,i+1];if(i<=12)return [i-5,7];if(i<=18)return [7,19-i];return [25-i,1]}
+function sectorForTile(i){const sectors=['製造業','消費業','金融業','能源與運輸','民生業','科技業'];return sectors[((Math.floor((i-3)/3)%6)+6)%6]}
+function tileName(tile,i){return tile.type==='sector'?sectorForTile(i):tile.label}
+function renderBoard(){
+  const pos=state.players.map(p=>({p,index:animation?.playerId===p.id?animation.position:p.position}));
+  const tiles=BOARD.map((tile,i)=>{
+    const [row,col]=boardCoords(i);
+    const tokens=pos.filter(x=>x.index===i).map(x=>`<span class="token ${animation?.playerId===x.p.id?'moving':''}" title="${h(x.p.name)}" style="background:${colors[x.p.color]}"></span>`).join('');
+    return `<div class="tile ${tile.type} ${animation?.position===i?'tile-active':''} ${animation?.visited.has(i)?'tile-visited':''}" data-tile-index="${i}" style="grid-row:${row};grid-column:${col}" title="${h(tileName(tile,i))}"><span class="tile-number">${String(i).padStart(2,'0')}</span><span class="tile-type">${h(tileName(tile,i))}</span><span class="tile-icon">${tile.type==='global'?'◎':tile.type==='personal'?'◇':tile.type==='sector'?'▦':'↗'}</span><div class="tile-tokens">${tokens}</div></div>`;
+  }).join('');
+  const values=animation?.displayReels||state.reels||(state.dice===null?[0,0,0]:['–','–','–']);
+  const spinning=animation?.stage==='rolling';
+  const reels=values.map((value,i)=>{
+    const position=animation?.reelPositions?.[i]??(Number.isInteger(value)?value:0);
+    const cells=Array.from({length:28},(_,cell)=>`<strong class="slot-cell">${cell%4}</strong>`).join('');
+    return `<span class="slot-reel ${spinning&&animation.spinning[i]?'spinning':''}" aria-label="第 ${i+1} 個轉輪：${value}"><span class="slot-strip" style="transform:translateY(-${position*100}%)">${cells}</span></span>`;
+  }).join('');
+  const total=spinning?'數字跳動中…':state.dice===null?'啟動拉霸前進':`前進 ${state.dice} 格`;
+  $('#board').innerHTML=tiles+`<div class="board-center"><div class="center-icon">⌁</div><h3>市場正在運轉</h3><p>三輪拉霸 · 逐格前進 · 每季結算</p><div class="slot-machine" role="group" aria-label="三個 0 到 3 的拉霸轉輪">${reels}</div><div class="slot-total">${total}</div><small>${spinning?'三個數字依序停止':animation?.stage==='result'?'結果已出現，稍後開始移動':state.dice===0?'本次停留原地，不抽事件卡':animation?.stage==='moving'?'棋子每秒前進一格':'經過起點可獲得 250 遊戲幣'}</small></div>`;
+}
+function actionRow(id,buttons,min=1){return `<div class="action-row"><input id="${id}" type="number" min="${min}" step="1" value="${id==='staff-count'?10:100}" aria-label="${id==='staff-count'?'人數':'金額'}">${buttons.map(([label,action])=>`<button type="button" data-action="${action}">${label}</button>`).join('')}</div>`}
+function renderTurn(){
+  const p=currentPlayer(),r=role(p.roleId),done=state.phase==='manage',finished=state.status!=='playing';
+  if(animation){$('#turn-content').innerHTML=`<h2 class="turn-name" style="color:${colors[p.color]}">${h(p.name)}</h2><p class="turn-role">${h(r.name)} · ${h(r.sector)}</p><div class="turn-steps"><span class="done"></span><span class="done"></span><span></span></div><p class="turn-meta">${animation.stage==='rolling'?'三個轉輪轉動中…':animation.stage==='result'?'數字已停定，等待一秒後開始移動。':animation.dice===0?'拉出 0 + 0 + 0 = 0，棋子停留原地。':`拉出 ${animation.reels.join(' + ')} = ${animation.dice}，棋子每秒前進一格。`}</p><button class="primary" disabled>請稍候…</button>`;return}
+  if(finished){
+    const winners=state.players.filter(x=>state.winnerIds.includes(x.id)).map(x=>x.name).join('、');
+    const cause=state.status==='bankruptcy'?'有玩家破產':state.status==='goal'?'有人達成淨資產目標':'到達季數上限';
+    $('#turn-content').innerHTML=`<h2 class="turn-name">對局結束</h2><p class="turn-role">${cause}</p><p class="turn-meta">勝出：<strong>${h(winners||'無')}</strong></p><button class="secondary" data-action="new-game">再玩一局</button>`;
+    return;
+  }
+  $('#turn-content').innerHTML=`<h2 class="turn-name" style="color:${colors[p.color]}">${h(p.name)}</h2><p class="turn-role">${h(r.name)} · ${h(r.sector)}</p><div class="turn-steps"><span class="done"></span><span class="${done?'done':''}"></span><span></span></div>${!done?`<p class="turn-meta">輪到你啟動拉霸。三個轉輪各顯示 0–3，相加就是前進格數。</p><button class="primary" data-action="roll">啟動拉霸　▦</button>`:`<p class="turn-meta">拉出 <strong>${state.reels?.join(' + ')||'舊回合'} = ${state.dice}</strong>，停在「${h(tileName(BOARD[p.position],p.position))}」。${state.dice===0?'本次原地停留，不抽事件卡。':'完成經營後交給下一位玩家。'}</p><div class="action-block"><h4>員工調整 · 目前 ${state.companies[p.roleId].headcount} 人</h4><p>聘僱與裁員會改變全市場失業率及本企業人力成本。</p>${actionRow('staff-count',[['聘僱','hire'],['裁員','layoff']])}</div><div class="action-block"><h4>銀行借貸 · 未償 ${money(state.companies[p.roleId].debt)}</h4><p>借款增加現金與負債，不計入收入。銀行流動資產 ${money(state.bank.liquidAssets)}。</p>${actionRow('loan-amount',[['借款','loan'],['還款','repay']])}</div>${p.roleId==='bank'?`<div class="action-block"><h4>銀行壞帳</h4><p>目前不良放款 ${money(state.bank.nonperformingLoans)}。</p>${actionRow('bad-amount',[['認列','mark-bad'],['收回','recover-bad']])}</div>`:''}<button class="secondary" style="margin-top:18px" data-action="end-turn">${state.turnIndex===state.players.length-1?'結算本季 →':'交給下一位 →'}</button>`}`;
+}
+function activeForPlayer(a,p){return a.scope==='global'||a.scope==='personal'&&a.ownerId===p.id||a.scope==='sector'&&a.sector===role(p.roleId).sector}
+function effectTextForActive(a,roleId){
+  const items=METRICS.concat('asset_value').filter(m=>m==='asset_value'||role(roleId).base[m]!==0).flatMap(m=>effectBreakdown(state,roleId,m).filter(x=>x.instanceId===a.instanceId).map(x=>`${METRIC_LABELS[m]} ${x.pct>=0?'+':''}${decimal(x.pct,1)}%`));
+  return items.length?items.join(' · '):'本企業無直接數值影響';
+}
+function renderPlayers(){
+  $('#player-cards').innerHTML=state.players.map(p=>{
+    const r=role(p.roleId),f=financials(state,p.roleId),pos=companyPosition(state,p.roleId),c=state.companies[p.roleId];
+    const events=state.activeEvents.filter(a=>activeForPlayer(a,p)&&eventRemaining(a,state.round)>0);
+    return `<article class="player-card ${currentPlayer().id===p.id&&state.status==='playing'?'current':''}" style="--player-color:${colors[p.color]}"><div class="player-card-head"><div class="player-identity"><span class="role-icon">${r.icon}</span><div><h3>${h(p.name)}</h3><small>${h(r.name)} · ${h(r.sector)}</small></div></div><span class="position-label">第 ${p.position} 格</span></div><div class="wealth-line"><span>目前淨資產</span><strong>${signed(pos.netWorth)}</strong></div><div class="finance-grid"><div class="finance-stat positive"><span>本季收入</span><strong>${signed(f.revenue+f.otherIncome)}</strong></div><div class="finance-stat negative"><span>本季成本</span><strong>${signed(f.costs)}</strong></div><div class="finance-stat ${f.profit>=0?'positive':'negative'}"><span>預估淨利</span><strong>${signed(f.profit)}</strong></div><div class="finance-stat"><span>現金</span><strong>${money(c.cash)}</strong></div><div class="finance-stat"><span>投資資產</span><strong>${money(pos.assetValue)}</strong></div><div class="finance-stat"><span>借款／員工</span><strong>${money(c.debt)} / ${c.headcount}</strong></div></div><div class="event-impact"><div class="event-impact-head"><span>作用中的事件與影響</span><span>${events.length} 張</span></div>${events.length?events.map(a=>`<div class="effect-entry"><i class="dot scope-dot ${a.scope}"></i><span><b>${h(event(a.eventId).name)}</b> · 剩 ${eventRemaining(a,state.round)} 季<br><em>${h(effectTextForActive(a,p.roleId))}</em></span></div>`).join(''):'<span class="no-events">目前沒有適用的事件</span>'}</div><details class="finance-details"><summary>查看十項收支與事件後數值</summary><table class="flow-table"><tbody>${METRICS.map(m=>`<tr><td>${METRIC_LABELS[m]}</td><td>${signed(f.flows[m])}</td></tr>`).join('')}</tbody></table></details></article>`;
+  }).join('');
+}
+function renderMini(){const s=makeSnapshot(state);const fields=[['預估通膨',`${decimal(s.inflationPct,2)}%`],['預估成長',s.growthPct===null?'資料不足':`${decimal(s.growthPct,1)}%`],['失業率',`${decimal(s.unemploymentPct,1)}%`],['政策利率',`${decimal(s.fedRatePct,2)}%`]];$('#mini-economy').innerHTML=fields.map(([label,value])=>`<div class="mini-stat"><span>${label}</span><strong>${value}</strong></div>`).join('')}
+function renderGoals(){
+  $('#goal-copy').textContent=`淨資產達 ${money(state.targetWealth)}、任一玩家破產，或第 ${state.maxRounds} 季結束。`;
+  $('#goal-progress').innerHTML=state.players.map(p=>{const wealth=companyPosition(state,p.roleId).netWorth;return `<div class="goal-person"><span>${h(p.name)}</span><span>${money(wealth)} / ${money(state.targetWealth)}</span></div><div class="goal-track"><i style="width:${Math.max(0,Math.min(100,wealth/state.targetWealth*100))}%"></i></div>`}).join('');
+}
+function renderEvents(){
+  $('#active-events').innerHTML=state.activeEvents.length?state.activeEvents.map(a=>{
+    const e=event(a.eventId),remaining=eventRemaining(a,state.round),age=state.round-a.startedRound;
+    const target=a.scope==='global'?'全市場適用企業':a.scope==='personal'?`${state.players.find(p=>p.id===a.ownerId)?.name||'玩家'}本人`:`${a.sector}企業`;
+    return `<article class="event-card" style="--event-color:${scopeColor[a.scope]}"><div class="event-head"><span class="eyebrow">${e.id} · ${scopes[a.scope]}</span><span class="remaining">剩 ${remaining} 季</span></div><h3>${h(e.name)}</h3><p>${h(target)} · 本季倍率 ${decimal(e.decay[age]*100,1)}%</p><div class="effect-list">${e.effects.map(x=>`<span class="effect-chip">${METRIC_LABELS[x.metric]} ${x.pct>=0?'+':''}${decimal(x.pct*e.decay[age],1)}%</span>`).join('')}</div></article>`;
+  }).join(''):'<div class="empty-state">目前沒有作用中的事件。啟動拉霸並停在事件格即可抽卡。</div>';
+  $('#event-library').innerHTML=[['全球事件',GLOBAL_EVENTS],['個人事件',PERSONAL_EVENTS],['產業事件',SECTOR_EVENTS]].flatMap(([category,items])=>items.map(e=>`<div class="library-item"><div><strong>${e.id} · ${h(e.name)}</strong><p>${category}${e.sector?` · ${h(e.sector)}`:''} · ${e.effects.map(x=>`${METRIC_LABELS[x.metric]} ${x.pct>=0?'+':''}${x.pct}%`).join('、')}</p></div><span>${e.duration} 季</span></div>`)).join('');
+}
+
+const dashboardGroups=[
+  {title:'A · 景氣、物價與就業',items:[
+    ['inflationPct','本季通膨率','%','2 + 0.08×能源漲幅 + 0.06×原料漲幅'],['previousInflationPct','上季通膨率','%','上一季快照'],['energyChangePct','全市場能源成本漲幅','%','Σ本季能源成本 / Σ基準能源成本 − 1'],['materialChangePct','全市場原物料成本漲幅','%','Σ本季原物料成本 / Σ基準原物料成本 − 1'],['revenueTotal','本季營收總額','幣','Σ企業調整後營收'],['previousRevenueTotal','上季營收總額','幣','上一季快照'],['growthPct','本季營收成長率','%','本季營收 / 上季營收 − 1'],['previousGrowthPct','上季營收成長率','%','上一季快照'],['laborForce','勞動人口','人','固定勞動人口 1,000'],['employed','就業人口','人','Σ企業員工人數'],['unemployed','失業人口','人','勞動人口 − 就業人口'],['unemploymentPct','本季失業率','%','失業人口 / 勞動人口'],['previousUnemploymentPct','上季失業率','%','上一季快照']]},
+  {title:'B · 股市與信貸',items:[
+    ['stockIndex','本季股市指數','點','100 × (1 + 全球市場事件與 QE/QT 衝擊)'],['previousStockIndex','上季股市指數','點','上一季快照；第 0 季基準 100'],['stockIndex3Ago','三季前股市指數','點','第 t−3 季快照'],['stockReturn1Pct','單季股市變化','%','本季指數 / 上季指數 − 1'],['stockReturn3Pct','三季股市變化','%','本季指數 / 三季前指數 − 1'],['totalLoans','本季總放款','幣','銀行放款存量'],['totalLoans3Ago','三季前總放款','幣','第 t−3 季快照'],['loanGrowth3Pct','三季放款成長','%','本季放款 / 三季前放款 − 1']]},
+  {title:'C · 銀行風險',items:[
+    ['liquidAssets','流動資產','幣','銀行流動資產存量'],['shortTermLiabilities','短期負債','幣','銀行短期負債存量'],['liquidityPct','流動性比率','%','流動資產 / 短期負債'],['nonperformingLoans','不良放款','幣','銀行壞帳存量'],['nplPct','不良放款率','%','不良放款 / 總放款']]},
+  {title:'D · 聯準會政策',items:[
+    ['fedRatePct','本季政策利率','%','基準 4%，政策變動為持久狀態'],['rateCooldownRounds','利率冷卻剩餘','季','利率決策後 t+1、t+2 季冷卻'],['monetaryProgram','QE / QT 狀態','','兩季估值與利息效果'],['monetaryProgramRoundsLeft','QE / QT 剩餘','季','方案生效兩季']]}
+];
+function selectedSnapshot(){if(snapshotSelection==='preview'||!state.economicHistory.length)return {snapshot:makeSnapshot(state),preview:true};const n=snapshotSelection==='latest'?state.economicHistory.at(-1).round:Number(snapshotSelection);return {snapshot:getEconomicSnapshot(state,n)||state.economicHistory.at(-1),preview:false}}
+function metricValue(s,key,unit){const value=s[key];if(key==='monetaryProgram')return `<strong>${value||'無'}</strong>`;if(value===null||value===undefined)return '<strong class="missing">—（資料不足）</strong>';const d=unit==='%'?2:unit==='點'?1:0;return `<strong>${Number(value).toLocaleString('zh-TW',{minimumFractionDigits:d,maximumFractionDigits:d})}${unit?` <small>${unit}</small>`:''}</strong>`}
+function renderDashboard(){
+  const options=[`<option value="preview">第 ${state.round} 季 · 目前預估</option>`,...state.economicHistory.slice().reverse().map(s=>`<option value="${s.round}">第 ${s.round} 季 · 已結算</option>`)];
+  $('#snapshot-select').innerHTML=options.join('');
+  $('#snapshot-select').value=snapshotSelection==='latest'&&state.economicHistory.length?String(state.economicHistory.at(-1).round):snapshotSelection;
+  if(!$('#snapshot-select').value){snapshotSelection='latest';$('#snapshot-select').value=state.economicHistory.length?String(state.economicHistory.at(-1).round):'preview'}
+  const {snapshot:s,preview}=selectedSnapshot();
+  const dateLabel=`第 ${s.round} 季${preview?' · 尚未結算的預估':' · 已結算快照'}`;
+  $('#dashboard-body').innerHTML=`<div class="dashboard-banner">${dateLabel}｜${preview?'本季抽卡與經營調整會立即更新預估；聯準會只讀取結算後保存的快照。':'以下數值與 F01–F10 判斷來自同一份已儲存快照。'} 缺少歷史值時顯示「資料不足」。</div>${dashboardGroups.map(g=>`<section class="dashboard-section"><h3>${g.title}</h3><div class="metric-grid">${g.items.map(([key,name,unit,formula])=>`<article class="metric-card"><span class="metric-name">${name}</span>${metricValue(s,key,unit)}<small>來源：${dateLabel} · ${s[key]===null&&key!=='monetaryProgram'?'資料不足':preview?'預估':'已結算'}</small><div class="formula">${formula}</div></article>`).join('')}</div></section>`).join('')}<section class="dashboard-section"><h3>D · 十條規則雷達</h3>${preview?'<div class="empty-state">本季規則會在所有玩家完成行動後評估。</div>':renderRuleList(getFedRuleEvaluations(state,s.round))}</section>`;
+}
+const statusNames={selected:'已採用',matched:'符合',not_matched:'未符合',insufficient_data:'資料不足',suppressed_by_priority:'優先序覆蓋',rate_cooldown:'利率冷卻'};
+function renderRuleList(items){if(!items)return '<div class="empty-state">尚無規則評估。</div>';return `<div class="rule-list">${FED_RULES.map(r=>{const x=items.find(e=>e.ruleId===r.id);return `<article class="rule-card"><div class="rule-top"><h3>${r.id} · ${r.name}</h3><span class="status-pill ${x.status}">${statusNames[x.status]}</span></div><p>${x.comparisons.map(h).join('<br>')}</p><p>${h(x.reason||r.formula)}</p><code>欄位：${r.fields.join('、')}</code></article>`}).join('')}</div>`}
+function renderFed(){
+  const latest=state.economicHistory.at(-1);
+  if(!latest){$('#fed-body').innerHTML='<div class="empty-state">第 1 季結算後，這裡會列出十條規則的比較數值、優先序及政策決策。</div>';return}
+  const decision=getFedDecision(state,latest.round),evals=getFedRuleEvaluations(state,latest.round);
+  $('#fed-body').innerHTML=`<div class="fed-hero"><div><span>第 ${latest.round} 季已生效利率</span><strong>${decimal(latest.fedRatePct,2)}%</strong></div><div><span>候選／採用規則</span><strong>${decision.ruleId||'無'}</strong></div><div><span>本季政策結論</span><strong>${h(decision.action)}</strong></div><div><span>生效季數／冷卻</span><strong>第 ${decision.nextEffectiveRound} 季 · ${latest.rateCooldownRounds} 季</strong></div></div><div class="section-heading"><h2>規則判斷</h2><span class="section-hint">優先序：F08 → F09 → F07 → F03 → F01 → F06 → F04 → F02 → F05 → F10</span></div>${renderRuleList(evals)}`;
+}
+function chart(data,key,title,color){if(!data.length)return `<div class="empty-state">${title}：等待第一季結算。</div>`;const values=data.map(x=>x[key]).filter(Number.isFinite),min=Math.min(...values),max=Math.max(...values),span=max-min||1;const points=data.map((s,i)=>`${35+(i/(Math.max(data.length-1,1)))*660},${165-((s[key]-min)/span)*125}`).join(' ');return `<div class="history-chart"><h3>${title}</h3><svg viewBox="0 0 730 190" role="img" aria-label="${title}歷史折線圖"><line x1="30" y1="165" x2="700" y2="165" stroke="#dfe8e3"/><polyline points="${points}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${data.map((s,i)=>{const x=35+(i/Math.max(data.length-1,1))*660,y=165-((s[key]-min)/span)*125;return `<circle cx="${x}" cy="${y}" r="4" fill="${color}"><title>第 ${s.round} 季：${decimal(s[key],1)}</title></circle><text x="${x}" y="185" text-anchor="middle" font-size="10" fill="#899b93">${s.round}</text>`}).join('')}</svg><div class="chart-legend"><span><i style="background:${color}"></i>${title} · 依已結算快照</span></div></div>`}
+function renderHistory(){const data=state.economicHistory;$('#history-body').innerHTML=`<div class="history-layout"><div>${chart(data,'revenueTotal','全市場營收', '#0e9186')}${chart(data,'stockIndex','股市指數', '#597bae')}</div><div><div class="history-chart"><h3>各季數據</h3>${data.length?`<div style="overflow:auto"><table class="history-table"><thead><tr><th>季數</th><th>通膨</th><th>成長</th><th>失業</th><th>利率</th></tr></thead><tbody>${data.slice().reverse().map(s=>`<tr><td>${s.round}</td><td>${decimal(s.inflationPct,1)}%</td><td>${s.growthPct===null?'—':decimal(s.growthPct,1)+'%'}</td><td>${decimal(s.unemploymentPct,1)}%</td><td>${decimal(s.fedRatePct,2)}%</td></tr>`).join('')}</tbody></table></div>`:'<p class="muted">尚無已結算季數。</p>'}</div><div class="history-chart"><h3>遊戲動態</h3><div class="log-list">${state.log.length?state.log.slice(0,60).map(x=>`<div class="log-item">${h(x)}</div>`).join(''):'<div class="log-item">等待玩家擲骰。</div>'}</div></div></div></div>`}
+function render(){
+  if(!state){$('#setup').hidden=false;$('#game').hidden=true;renderSetup();return}
+  $('#setup').hidden=true;$('#game').hidden=false;
+  $('#round-number').textContent=String(state.round).padStart(2,'0');$('#round-limit').textContent=`／${state.maxRounds} 季`;
+  $('#round-subtitle').textContent=state.status==='playing'?`第 ${state.round} 季 · ${currentPlayer().name} 的回合`:'對局已結束 · 可查看最後的經濟數據與歷史紀錄';
+  document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.querySelectorAll('.tab-page').forEach(p=>p.classList.toggle('active',p.id===`tab-${tab}`));
+  renderBoard();renderTurn();renderMini();renderGoals();renderPlayers();renderEvents();renderDashboard();renderFed();renderHistory();
+}
+function showCard(active){if(!active)return;const e=event(active.eventId);$('#modal-kicker').textContent=`${scopes[active.scope]} · ${e.id}`;$('#modal-title').textContent=e.name;$('#modal-target').textContent=`作用 ${e.duration} 季；${active.scope==='global'?'所有適用企業同時受影響':active.scope==='sector'?`${active.sector}所有企業受影響`:'只影響抽卡玩家'}`;$('#modal-effects').innerHTML=e.effects.map(x=>`<span class="effect-chip">${METRIC_LABELS[x.metric]} ${x.pct>=0?'+':''}${x.pct}%</span>`).join('');$('#card-modal').hidden=false}
+function closeCard(){$('#card-modal').hidden=true}
+const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+function moveTokenStep(position){
+  animation?.visited.add(position);
+  const token=$('#board .token.moving'),destination=$(`#board [data-tile-index="${position}"] .tile-tokens`);
+  if(!token||!destination||tab!=='business')return;
+  const from=token.getBoundingClientRect();
+  $('#board .tile-active')?.classList.remove('tile-active');
+  destination.closest('.tile').classList.add('tile-active','tile-visited');
+  destination.appendChild(token);
+  const to=token.getBoundingClientRect();
+  token.style.transition='none';
+  token.style.transform=`translate(${from.left-to.left}px, ${from.top-to.top}px)`;
+  token.getBoundingClientRect();
+  requestAnimationFrame(()=>{
+    if(!token.isConnected)return;
+    token.style.transition=`transform ${MOVE_MS-80}ms linear`;
+    token.style.transform='translate(0,0)';
+  });
+}
+function beginRollAnimation({playerId,from,dice,reels},showDraw=false,draw=null){
+  if(!state||state.players[state.turnIndex]?.id!==playerId||state.dice!==dice)return;
+  if(document.hidden||tab!=='business'||window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches){if(showDraw&&tab==='business')showCard(draw);return}
+  cancelAnimation();
+  const serial=animationSerial;
+  const finalReels=Array.isArray(reels)&&reels.length===3?reels:[0,0,0];
+  animation={playerId,position:from,dice,reels:finalReels,displayReels:[0,1,2],reelPositions:[0,1,2],spinning:[true,true,true],visited:new Set(),stage:'rolling'};
+  renderBoard();renderTurn();
+  void (async()=>{
+    const stopTicks=[8,12,16];
+    for(let tick=0;tick<18;tick++){
+      await pause(120);
+      if(serial!==animationSerial)return;
+      const windows=document.querySelectorAll('#board .slot-reel');
+      for(let i=0;i<3;i++){
+        if(!animation.spinning[i])continue;
+        if(tick<stopTicks[i])animation.reelPositions[i]++;
+        else {
+          const difference=(finalReels[i]-animation.reelPositions[i]%4+4)%4;
+          animation.reelPositions[i]+=difference||4;
+          animation.spinning[i]=false;
+        }
+        animation.displayReels[i]=animation.reelPositions[i]%4;
+        const reel=windows[i];if(!reel)continue;
+        reel.querySelector('.slot-strip').style.transform=`translateY(-${animation.reelPositions[i]*100}%)`;
+        reel.classList.toggle('spinning',animation.spinning[i]);
+        reel.setAttribute('aria-label',`第 ${i+1} 個轉輪：${animation.displayReels[i]}`);
+      }
+    }
+    if(serial!==animationSerial)return;
+    animation.displayReels=[...finalReels];animation.spinning=[false,false,false];
+    animation.stage='result';renderBoard();renderTurn();
+    await pause(1000);
+    if(serial!==animationSerial)return;
+    animation.stage='moving';renderBoard();renderTurn();
+    for(const position of movementPath(from,dice)){
+      if(serial!==animationSerial)return;
+      animation.position=position;moveTokenStep(position);
+      await pause(MOVE_MS);
+    }
+    if(dice===0)await pause(400);
+    if(serial!==animationSerial)return;
+    animation=null;renderBoard();renderTurn();
+    if(showDraw&&tab==='business')showCard(draw);
+  })();
+}
+
+async function rollWithAnimation(){
+  if(animation)return;
+  let result=null,from=null,playerId=null;
+  try{
+    await withGameLock(()=>{
+      if(!ensureFresh())return;
+      const player=currentPlayer();from=player.position;playerId=player.id;
+      result=rollDice(state);save();render();
+    });
+    if(result)beginRollAnimation({playerId,from,dice:result.dice,reels:result.reels},true,result.draw);
+  }catch(e){notify(e.message||'無法啟動拉霸')}
+}
+
+$('#add-player').addEventListener('click',()=>{if(setupPlayers.length<4){const used=new Set(setupPlayers.map(x=>x.roleId));setupPlayers.push({name:`玩家 ${setupPlayers.length+1}`,roleId:ROLES.find(x=>!used.has(x.id)).id});renderSetup()}});
+$('#setup-players').addEventListener('input',e=>{if(e.target.dataset.setupName!==undefined)setupPlayers[Number(e.target.dataset.setupName)].name=e.target.value});
+$('#setup-players').addEventListener('change',e=>{if(e.target.dataset.setupRole!==undefined)setupPlayers[Number(e.target.dataset.setupRole)].roleId=e.target.value});
+$('#setup-players').addEventListener('click',e=>{const i=e.target.dataset.removePlayer;if(i!==undefined&&setupPlayers.length>2){setupPlayers.splice(Number(i),1);renderSetup()}});
+$('#start-btn').addEventListener('click',async()=>{try{await withGameLock(()=>{const saved=readStored();if(saved){adoptShared(saved);notify('已加入另一個頁籤的對局。');return}const next=createGame({players:setupPlayers,seed:$('#seed-input').value,targetWealth:$('#target-input').value,maxRounds:$('#rounds-input').value});prepareNewSession(next);state=next;$('#setup-error').textContent='';tab='business';snapshotSelection='preview';rememberView();save();render()})}catch(e){$('#setup-error').textContent=e.message}});
+$('.tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(!b)return;tab=b.dataset.tab;rememberView();render();window.scrollTo({top:0,behavior:'smooth'})});
+$('#snapshot-select').addEventListener('change',e=>{snapshotSelection=e.target.value;rememberView();renderDashboard()});
+$('#game').addEventListener('click',e=>{
+  const a=e.target.closest('[data-action]');if(!a||!state)return;
+  const action=a.dataset.action,p=currentPlayer();
+  if(action==='new-game'){void resetGame();return}
+  if(action==='roll'){void rollWithAnimation();return}
+  if(animation)return;
+  if(action==='end-turn'){run(()=>{const result=endTurn(state);if(result){snapshotSelection='latest';rememberView();notify(result.finished?'對局結束，請查看勝負結果。':`第 ${result.snapshot.round} 季已結算。`)}});return}
+  const numberId=['hire','layoff'].includes(action)?'#staff-count':['loan','repay'].includes(action)?'#loan-amount':'#bad-amount';
+  const n=Number($(numberId)?.value);
+  run(()=>{if(action==='hire')adjustStaff(state,p.id,n);else if(action==='layoff')adjustStaff(state,p.id,-n);else if(action==='loan')issueLoan(state,p.id,n);else if(action==='repay')repayLoan(state,p.id,n);else if(action==='mark-bad')updateBadLoans(state,p.id,n);else if(action==='recover-bad')updateBadLoans(state,p.id,-n)});
+});
+document.querySelectorAll('[data-close-modal]').forEach(x=>x.addEventListener('click',closeCard));
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeCard()});
+async function resetGame(){
+  if(state&&!confirm('確定開始新遊戲？所有已開啟的頁籤都會返回設定畫面，建議先匯出備份。'))return;
+  await withGameLock(()=>{const stored=readStored();if(stored&&isNewerGame(stored,state))state=stored;clearSave();cancelAnimation();closeCard();state=null;tab='business';rememberView();render()});
+}
+$('#new-game-btn').addEventListener('click',()=>{void resetGame()});
+$('#open-tab-btn').addEventListener('click',()=>{window.open(location.href,'_blank','noopener')});
+$('#export-btn').addEventListener('click',()=>{if(!state){notify('目前沒有可匯出的對局。');return}const blob=new Blob([exportGame(state)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`經濟棋局-第${state.round}季.json`;a.click();URL.revokeObjectURL(url)});
+$('#import-file').addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file)return;try{const imported=importGame(await file.text());await withGameLock(()=>{const stored=readStored();if(stored&&isNewerGame(stored,state))state=stored;prepareNewSession(imported);cancelAnimation();state=imported;tab='business';snapshotSelection='latest';rememberView();save();render()});notify('存檔已載入，其他頁籤也已更新。')}catch(err){notify(err.message||'無法讀取存檔')}e.target.value=''});
+window.addEventListener('storage',e=>{
+  if(e.key!==storageKey)return;
+  if(e.newValue){try{adoptShared(importGame(e.newValue))}catch{}}
+  else{const saved=readStored();if(saved)adoptShared(saved);else if(saved===null){resetAt=Math.max(resetAt,Date.now());cancelAnimation();closeCard();state=null;render()}}
+});
+if(channel)channel.onmessage=e=>{
+  const message=e.data;if(!message||message.writerId===tabId)return;
+  if(message.type==='state'){try{adoptShared(importGame(JSON.stringify(message.game)))}catch{}}
+  if(message.type==='reset'&&(!state||message.updatedAt>=syncInfo(state).updatedAt)){resetAt=Math.max(resetAt,message.updatedAt);cancelAnimation();closeCard();state=null;render()}
+};
+function syncOnFocus(){const saved=readStored();if(saved)adoptShared(saved);else if(saved===null&&state){cancelAnimation();closeCard();state=null;render()}}
+window.addEventListener('focus',syncOnFocus);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncOnFocus()});
+const savedAtStart=readStored();if(savedAtStart){state=savedAtStart;snapshotSelection='latest'}
+render();
