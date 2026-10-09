@@ -18,12 +18,12 @@
         <div class="home-hero">
           <p class="eyebrow">遊戲玩法</p>
           <h1 id="home-title">經營企業，<br><em>走出你的經濟棋局。</em></h1>
-          <p>2–4 位玩家輪流玩。每人選一家企業，走棋盤、抽事件、做經營決定，想辦法提高自己的淨資產。</p>
+          <p>2–8 位玩家輪流玩。每人選一家企業，走棋盤、抽事件、做經營決定，想辦法提高自己的淨資產。</p>
           <button id="home-play-btn" class="primary" type="button">設定玩家，開始遊戲 →</button>
           <p id="home-status" class="home-status">一台電腦就能開始，大家輪流操作。</p>
         </div>
         <div class="home-guide" aria-label="玩法步驟">
-          <div class="home-step"><span>01</span><div><h2>選玩家和企業</h2><p>選 2–4 位玩家，每人選不同的企業。開局時也能調整淨資產目標和最多季數。</p></div></div>
+          <div class="home-step"><span>01</span><div><h2>選玩家和企業</h2><p>選 2–8 位玩家，每人選不同的企業。開局時也能調整淨資產目標和最多季數。</p></div></div>
           <div class="home-step"><span>02</span><div><h2>拉霸，走棋盤</h2><p>輪到你時，啟動兩個數字的拉霸。每個轉輪會停在 0–6，兩數相加就是前進格數。若總和為 0，就停在原地，不抽新卡。</p></div></div>
           <div class="home-step"><span>03</span><div><h2>停格後點卡抽事件</h2><p>停在事件格時，點擊棋盤中央流動的卡片，事件才會翻開。全球事件影響所有適用企業；個人事件只影響你；產業事件影響同產業的企業。事件可能持續好幾季。</p></div></div>
           <div class="home-step"><span>04</span><div><h2>經營你的企業</h2><p>看完事件卡，按「繼續經營」，棋盤中央就會顯示你這種企業的經營提示。你可以聘僱或裁員，也可以借款或還款；看過收入、成本和淨資產後，再交給下一位玩家。</p></div></div>
@@ -45,7 +45,7 @@
       </section>
       <div id="setup" class="setup-wrap" hidden>
         <section class="setup-hero"><p class="eyebrow">一台電腦・輪流遊玩・一回合代表一季</p><h1>啟動你的<br><em>經濟新局。</em></h1><p>選擇企業，啟動兩輪數字拉霸前進，讓事件改寫收入、成本與資產。棋子每秒前進一格；當所有玩家完成行動，市場與聯準會就會結算這一季。</p><div class="setup-notes"><span>24 格經濟棋盤</span><span>10 種企業</span><span>10 條聯準會規則</span></div></section>
-        <section class="setup-card"><div class="section-heading"><div><p class="eyebrow">建立對局</p><h2>設定玩家</h2></div><span class="step-pill">2–4 人</span></div><div id="setup-players"></div><button id="add-player" type="button" class="add-player">＋ 新增玩家</button><div class="setup-options"><label>勝利淨資產目標<input id="target-input" type="number" min="2000" step="500" value="5500"></label><label>最多季數<input id="rounds-input" type="number" min="2" max="50" value="12"></label></div><p class="helper">淨資產 = 現金 + 投資資產 − 借款。達標、玩家破產或季數上限到達時結束。</p><p id="setup-error" class="form-error" role="alert"></p><button id="start-btn" class="primary big" type="button">開始遊戲 <span>→</span></button></section>
+        <section class="setup-card"><div class="section-heading"><div><p class="eyebrow">建立對局</p><h2>設定玩家</h2></div><span class="step-pill">2–8 人</span></div><div id="setup-players"></div><button id="add-player" type="button" class="add-player">＋ 新增玩家</button><div class="setup-options"><label>勝利淨資產目標<input id="target-input" type="number" min="2000" step="500" value="5500"></label><label>最多季數<input id="rounds-input" type="number" min="2" max="50" value="12"></label></div><p class="helper">淨資產 = 現金 + 投資資產 − 借款。達標、玩家破產或季數上限到達時結束。</p><p id="setup-error" class="form-error" role="alert"></p><button id="start-btn" class="primary big" type="button">開始遊戲 <span>→</span></button></section>
       </div>
       <div id="game" hidden>
         <nav class="tabs" aria-label="遊戲頁面"><button data-tab="business" class="active">企業經營</button><button data-tab="events">全球事件</button><button data-tab="dashboard">總體經濟儀表板</button><button data-tab="fed">AI 聯準會</button><button data-tab="history">歷史紀錄</button></nav>

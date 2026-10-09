@@ -139,3 +139,6 @@ h1,h2,h3,p{margin-top:0}h1,h2,h3{letter-spacing:-.025em}h1{font-size:clamp(38px,
 .brand .round-badge strong{font-size:25px;line-height:1}
 @media(max-width:760px){.brand .round-badge{width:60px;height:50px}.brand .round-badge strong{font-size:20px}}
 @media(min-width:761px) and (max-width:1439px){.player-grid>.player-card.current{grid-column:1/-1}}
+.tile.crowded .tile-tokens{display:grid;grid-template-columns:repeat(4,11px);gap:1px;left:4px}
+.tile.crowded .token{width:11px;height:11px;border-width:1px}
+@media(max-width:760px){.tile.crowded .tile-tokens{grid-template-columns:repeat(4,8px);left:2px;bottom:2px}.tile.crowded .token{width:8px;height:8px}}

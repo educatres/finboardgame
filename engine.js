@@ -41,7 +41,7 @@ export function financials(state,roleId,round=state.round){
 export function companyPosition(state,roleId){const c=state.companies[roleId];return {cash:c.cash,assetValue:assetValue(state,roleId),debt:c.debt,netWorth:c.cash+assetValue(state,roleId)-c.debt}}
 
 export function createGame({players,seed=Date.now(),targetWealth=5500,maxRounds=12}){
-  if(!Array.isArray(players)||players.length<2||players.length>4)throw Error('請選擇 2 至 4 位玩家。');
+  if(!Array.isArray(players)||players.length<2||players.length>8)throw Error('請選擇 2 至 8 位玩家。');
   if(new Set(players.map(p=>p.roleId)).size!==players.length||players.some(p=>!roleById(p.roleId)))throw Error('每位玩家需要不同的企業角色。');
   const names=players.map(p=>String(p.name||'').trim());
   if(names.some(n=>!n)||new Set(names).size!==names.length)throw Error('玩家名稱不得空白或重複。');

@@ -13,6 +13,21 @@ test('新對局預設以建立時間作為亂數種子',()=>{
   assert.ok(state.seed>=before&&state.seed<=after);
   assert.equal(state.rng,state.seed|0||1);
 });
+test('八位玩家都完成回合後才結算，九位玩家無法開局',()=>{
+  const players=ROLES.slice(0,8).map((role,i)=>({name:`玩家 ${i+1}`,roleId:role.id}));
+  const state=createGame({players,seed:42});
+  assert.equal(state.players.length,8);
+  assert.deepEqual(state.players.map(player=>player.color),[0,1,2,3,4,5,6,7]);
+  for(let i=0;i<8;i++){
+    assert.equal(state.turnIndex,i);
+    rollDice(state,[0,0]);
+    assert.equal(state.phase,'manage');
+    const result=endTurn(state);
+    if(i<7){assert.equal(result,null);assert.equal(state.round,1)}
+    else{assert.equal(result.finished,false);assert.equal(state.round,2);assert.equal(state.turnIndex,0)}
+  }
+  assert.throws(()=>createGame({players:[...players,{name:'玩家 9',roleId:ROLES[8].id}]}),/2 至 8 位玩家/);
+});
 test('十種企業、十張全球卡、十條規則及基準淨利符合規格',()=>{
   assert.equal(ROLES.length,10);assert.equal(GLOBAL_EVENTS.length,10);assert.equal(FED_RULES.length,10);
   assert.deepEqual(ROLES.map(r=>Math.round(Object.values(r.base).reduce((a,b)=>a+b,0))),[200,230,50,420,440,160,165,330,65,315]);

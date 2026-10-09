@@ -4,7 +4,7 @@ import {syncInfo,isNewerGame} from './sync.js';
 
 const $=s=>document.querySelector(s),h=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>Math.round(n).toLocaleString('zh-TW'),decimal=(n,d=1)=>n===null||n===undefined?'—（資料不足）':Number(n).toFixed(d),signed=n=>`${n>=0?'+':'−'}${money(Math.abs(n))}`;
-const colors=['#0f9688','#5979b0','#ce9460','#aa6b91'];
+const colors=['#0f9688','#5979b0','#ce9460','#aa6b91','#c55d5d','#7e9541','#348da5','#7a60ad'];
 const scopes={global:'全球事件',personal:'個人事件',sector:'產業事件'};
 const scopeColor={global:'#cc6d61',personal:'#597bae',sector:'#ca9451'};
 const twoColumnPlayerCards=window.matchMedia('(min-width:761px) and (max-width:1439px)');
@@ -108,7 +108,7 @@ function renderHomeRoles(){
 }
 function renderSetup(){
   $('#setup-players').innerHTML=setupPlayers.map((p,i)=>`<div class="setup-player"><span class="player-numeral">${i+1}</span><input data-setup-name="${i}" aria-label="玩家 ${i+1} 名稱" maxlength="16" value="${h(p.name)}"><select data-setup-role="${i}" aria-label="玩家 ${i+1} 企業">${ROLES.map(r=>`<option value="${r.id}" ${r.id===p.roleId?'selected':''}>${h(r.name)}</option>`).join('')}</select><button class="remove-player" data-remove-player="${i}" type="button" aria-label="移除玩家 ${i+1}" ${setupPlayers.length<=2?'disabled':''}>×</button></div>`).join('');
-  $('#add-player').disabled=setupPlayers.length>=4;
+  $('#add-player').disabled=setupPlayers.length>=8;
 }
 function currentPlayer(){return state?.players[state.turnIndex]}
 function boardCoords(i){if(i<=6)return [1,i+1];if(i<=12)return [i-5,7];if(i<=18)return [7,19-i];return [25-i,1]}
@@ -164,8 +164,9 @@ function renderBoard(){
   const pos=state.players.map(p=>({p,index:animation?.playerId===p.id?animation.position:p.position}));
   const tiles=BOARD.map((tile,i)=>{
     const [row,col]=boardCoords(i);
-    const tokens=pos.filter(x=>x.index===i).map(x=>`<span class="token ${animation?.playerId===x.p.id?'moving':''}" title="${h(x.p.name)}" style="background:${colors[x.p.color]}"></span>`).join('');
-    return `<div class="tile ${tile.type} ${animation?.position===i?'tile-active':''} ${animation?.visited.has(i)?'tile-visited':''}" data-tile-index="${i}" style="grid-row:${row};grid-column:${col}" title="${h(tileName(tile,i))}"><span class="tile-number">${String(i).padStart(2,'0')}</span><span class="tile-type">${h(tileName(tile,i))}</span><span class="tile-icon">${tile.type==='global'?'◎':tile.type==='personal'?'◇':tile.type==='sector'?'▦':'↗'}</span><div class="tile-tokens">${tokens}</div></div>`;
+    const occupants=pos.filter(x=>x.index===i);
+    const tokens=occupants.map(x=>`<span class="token ${animation?.playerId===x.p.id?'moving':''}" title="${h(x.p.name)}" style="background:${colors[x.p.color]}"></span>`).join('');
+    return `<div class="tile ${tile.type} ${occupants.length>4?'crowded':''} ${animation?.position===i?'tile-active':''} ${animation?.visited.has(i)?'tile-visited':''}" data-tile-index="${i}" style="grid-row:${row};grid-column:${col}" title="${h(tileName(tile,i))}"><span class="tile-number">${String(i).padStart(2,'0')}</span><span class="tile-type">${h(tileName(tile,i))}</span><span class="tile-icon">${tile.type==='global'?'◎':tile.type==='personal'?'◇':tile.type==='sector'?'▦':'↗'}</span><div class="tile-tokens">${tokens}</div></div>`;
   }).join('');
   const legacyRoll=state.dice!==null&&state.reels?.length===3&&!animation;
   const values=animation?.displayReels||(state.reels?.length===2?state.reels:[0,0]);
@@ -350,7 +351,7 @@ async function rollWithAnimation(){
   }catch(e){notify(e.message||'無法啟動拉霸')}
 }
 
-$('#add-player').addEventListener('click',()=>{if(setupPlayers.length<4){const used=new Set(setupPlayers.map(x=>x.roleId));setupPlayers.push({name:`玩家 ${setupPlayers.length+1}`,roleId:ROLES.find(x=>!used.has(x.id)).id});renderSetup()}});
+$('#add-player').addEventListener('click',()=>{if(setupPlayers.length<8){const used=new Set(setupPlayers.map(x=>x.roleId));let number=1;while(setupPlayers.some(x=>x.name===`玩家 ${number}`))number++;setupPlayers.push({name:`玩家 ${number}`,roleId:ROLES.find(x=>!used.has(x.id)).id});renderSetup()}});
 $('#setup-players').addEventListener('input',e=>{if(e.target.dataset.setupName!==undefined)setupPlayers[Number(e.target.dataset.setupName)].name=e.target.value});
 $('#setup-players').addEventListener('change',e=>{if(e.target.dataset.setupRole!==undefined)setupPlayers[Number(e.target.dataset.setupRole)].roleId=e.target.value});
 $('#setup-players').addEventListener('click',e=>{const i=e.target.dataset.removePlayer;if(i!==undefined&&setupPlayers.length>2){setupPlayers.splice(Number(i),1);renderSetup()}});
