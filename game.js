@@ -326,6 +326,18 @@ const colors=['#0f9688','#5979b0','#ce9460','#aa6b91'];
 const scopes={global:'全球事件',personal:'個人事件',sector:'產業事件'};
 const scopeColor={global:'#cc6d61',personal:'#597bae',sector:'#ca9451'};
 const role=id=>ROLES.find(x=>x.id===id),event=id=>ALL_EVENTS.find(x=>x.id===id);
+const roleStories={
+  auto:'產線的燈剛亮，經銷商的訂單已經排進來。你要讓車準時下線，還得盯住原物料、電力和出口費用。',
+  electronics:'海外客戶催著交貨，零件卻還在路上。訂單帶來高營收，材料、關稅和人力也同時壓在帳上。',
+  retail:'百貨大門一開，櫃位就等著客人上門。銷售撐起現金流，補貨則是每季最重的一筆支出。',
+  bank:'營業廳外已有客戶排隊，放款與收款都等你決定。利息是主要收入，壞帳和流動性更要時時留意。',
+  investment:'開盤鈴剛響，螢幕上的價格不停跳動。投資收益是你的主力，市場轉向時也得承受資產波動。',
+  energy:'調度室電話響個不停，工廠和城市都等著供應。需求帶來營收，原料、設備和融資成本也得一起扛。',
+  logistics:'清晨車隊發車，貨物必須準時送到。接單只是開始，能源與人力支出會決定這趟生意賺多少。',
+  property:'新案開賣，看屋人潮已經走進現場。收入進來之前，利息與固定營運費用每季都照樣到期。',
+  agriculture:'天還沒亮，你已在確認採收、原料和配送車次。每批食品都要準時出貨，材料與能源價格牽動盈虧。',
+  technology:'開發團隊正趕著交付新版服務，客戶也在等系統上線。營收靠專案，人力是最大的基準支出。'
+};
 const storageKey='economy-board-v1';
 const viewKey='economy-board-view-v1';
 const tabId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;
@@ -383,6 +395,21 @@ async function run(fn){
   catch(e){notify(e.message||'操作失敗')}
 }
 
+function homeFlowLabel(metric,value){
+  if(metric==='interest')return value>0?'利息收入':'利息支出';
+  if(metric==='investment')return value>0?'投資收益':'投資損失';
+  if(metric==='export_cost')return '出口貿易費';
+  if(metric==='fixed')return '固定營運費';
+  return METRIC_LABELS[metric];
+}
+function renderHomeRoles(){
+  $('#home-roles').innerHTML=ROLES.map(r=>{
+    const income=METRICS.reduce((sum,m)=>sum+Math.max(0,r.base[m]),0);
+    const expense=METRICS.reduce((sum,m)=>sum+Math.max(0,-r.base[m]),0);
+    const flowList=positive=>METRICS.filter(m=>positive?r.base[m]>0:r.base[m]<0).map(m=>`<div><dt>${h(homeFlowLabel(m,r.base[m]))}</dt><dd>${money(Math.abs(r.base[m]))}</dd></div>`).join('');
+    return `<article class="home-role"><div class="home-role-title"><span class="home-role-icon" aria-hidden="true">${r.icon}</span><div><span class="home-role-sector">${h(r.sector)} · 起始 ${r.baseHeadcount} 人</span><h3>${h(r.name)}</h3></div></div><p class="home-role-story">${h(roleStories[r.id])}</p><div class="home-role-totals"><div><span>基準收入</span><strong>+${money(income)}</strong></div><div><span>基準支出</span><strong>−${money(expense)}</strong></div><div><span>預估淨利</span><strong>${signed(income-expense)}</strong></div></div><details class="home-role-details"><summary>查看每季收支明細</summary><div class="home-role-flows"><div><h4>收入</h4><dl>${flowList(true)}</dl></div><div><h4>支出</h4><dl>${flowList(false)}</dl></div></div></details></article>`;
+  }).join('');
+}
 function renderSetup(){
   $('#setup-players').innerHTML=setupPlayers.map((p,i)=>`<div class="setup-player"><span class="player-numeral">${i+1}</span><input data-setup-name="${i}" aria-label="玩家 ${i+1} 名稱" maxlength="16" value="${h(p.name)}"><select data-setup-role="${i}" aria-label="玩家 ${i+1} 企業">${ROLES.map(r=>`<option value="${r.id}" ${r.id===p.roleId?'selected':''}>${h(r.name)}</option>`).join('')}</select><button class="remove-player" data-remove-player="${i}" type="button" aria-label="移除玩家 ${i+1}" ${setupPlayers.length<=2?'disabled':''}>×</button></div>`).join('');
   $('#add-player').disabled=setupPlayers.length>=4;
@@ -620,4 +647,5 @@ function syncOnFocus(){const saved=readStored();if(saved)adoptShared(saved);else
 window.addEventListener('focus',syncOnFocus);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncOnFocus()});
 const savedAtStart=readStored();if(savedAtStart){state=savedAtStart;snapshotSelection='latest'}
+renderHomeRoles();
 render();

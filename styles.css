@@ -30,8 +30,8 @@ h1,h2,h3,p{margin-top:0}h1,h2,h3{letter-spacing:-.025em}h1{font-size:clamp(38px,
 @media(max-width:760px){.disclosure-panel summary{padding:16px}.disclosure-panel summary span{align-items:flex-start;flex-direction:column;gap:4px}.disclosure-panel summary em{line-height:1.45}.disclosure-content{padding:14px}}
 
 .top-actions .quiet.active{background:#e5f1ed;color:var(--teal-dark);font-weight:800}
-.home-page{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1fr);gap:8%;padding:72px 3% 84px;align-items:start}
-.home-hero{position:sticky;top:48px;padding-top:44px}
+.home-page{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1fr);column-gap:8%;padding:72px 3% 84px;align-items:start}
+.home-hero{padding-top:44px}
 .home-hero h1{font-size:clamp(42px,4.2vw,60px);margin-bottom:28px}
 .home-hero>p:not(.eyebrow):not(.home-status){max-width:510px;color:#64747a;font-size:18px;line-height:1.85;margin-bottom:30px}
 .home-hero .primary{font-size:16px;padding:15px 22px}
@@ -42,5 +42,29 @@ h1,h2,h3,p{margin-top:0}h1,h2,h3{letter-spacing:-.025em}h1{font-size:clamp(38px,
 .home-step h2{font-size:21px;margin:0 0 8px}
 .home-step p{color:#63747a;font-size:14px;line-height:1.8;margin:0;max-width:560px}
 .home-formula{color:var(--teal-dark);font-size:15px;font-weight:800;margin:28px 0 0 61px}
+.home-roles{grid-column:1/-1;margin-top:54px}
+.home-roles-heading{display:grid;grid-template-columns:1fr 1fr;gap:8%;align-items:end;border-top:1px solid #d9dfda;padding-top:37px;margin-bottom:25px}
+.home-roles-heading h2{font-size:clamp(28px,3vw,40px);line-height:1.25}
+.home-roles-heading>p{color:#63747a;font-size:14px;line-height:1.8;margin:0}
+.home-role-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
+.home-role{background:#fff;border:1px solid #e4e9e4;border-radius:14px;padding:25px 26px 20px;box-shadow:var(--shadow)}
+.home-role-title{display:flex;align-items:center;gap:13px;margin-bottom:15px}
+.home-role-icon{width:47px;height:47px;display:grid;place-items:center;background:#edf4f0;border-radius:11px;font-size:23px}
+.home-role-sector{color:var(--teal);font-size:11px;font-weight:800}
+.home-role-title h3{font-size:20px;margin:2px 0 0}
+.home-role-story{color:#5f7176;font-size:14px;line-height:1.8;min-height:75px;margin:0 0 19px}
+.home-role-totals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;border-top:1px solid #e8ece8;padding-top:17px}
+.home-role-totals span{display:block;color:#879491;font-size:11px;font-weight:700;margin-bottom:4px}
+.home-role-totals strong{font-size:20px;letter-spacing:-.03em}
+.home-role-totals div:first-child strong,.home-role-totals div:last-child strong{color:var(--teal-dark)}
+.home-role-totals div:nth-child(2) strong{color:#bc645b}
+.home-role-details{border-top:1px solid #e8ece8;margin-top:18px;padding-top:12px}
+.home-role-details summary{color:var(--teal-dark);font-size:12px;font-weight:800;cursor:pointer;padding:3px 0}
+.home-role-flows{display:grid;grid-template-columns:1fr 1fr;gap:25px;margin-top:17px}
+.home-role-flows h4{font-size:12px;margin:0 0 9px}
+.home-role-flows dl{margin:0}
+.home-role-flows dl>div{display:flex;justify-content:space-between;gap:10px;color:#65777b;font-size:12px;line-height:1.5;padding:5px 0;border-bottom:1px solid #f0f2ef}
+.home-role-flows dt{min-width:0}.home-role-flows dd{font-weight:800;color:var(--ink);margin:0;white-space:nowrap}
 @media(max-width:960px){.home-page{grid-template-columns:1fr;gap:34px;padding:44px 2% 68px}.home-hero{position:static;padding-top:0}.home-hero h1{font-size:clamp(40px,6vw,60px)}.home-hero>p:not(.eyebrow):not(.home-status){max-width:680px}}
-@media(max-width:760px){.topbar{flex-wrap:wrap;padding:10px 0}.top-actions{width:100%;justify-content:space-between;flex-wrap:wrap}.home-page{padding:40px 0 60px}.home-hero>p:not(.eyebrow):not(.home-status){font-size:16px}.home-step{padding:22px 0}.home-step h2{font-size:18px}.home-step p{font-size:13px}.home-formula{margin-left:0}}
+@media(max-width:760px){.topbar{flex-wrap:wrap;padding:10px 0}.top-actions{width:100%;justify-content:space-between;flex-wrap:wrap}.home-page{padding:40px 0 60px}.home-hero>p:not(.eyebrow):not(.home-status){font-size:16px}.home-step{padding:22px 0}.home-step h2{font-size:18px}.home-step p{font-size:13px}.home-formula{margin-left:0}.home-roles{margin-top:24px}.home-roles-heading{grid-template-columns:1fr;gap:12px}.home-role-grid{grid-template-columns:1fr}.home-role-story{min-height:0}}
+@media(max-width:440px){.home-role{padding:21px 18px 17px}.home-role-totals strong{font-size:17px}.home-role-flows{grid-template-columns:1fr;gap:16px}}
