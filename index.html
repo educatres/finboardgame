@@ -32,10 +32,15 @@
         </div>
         <section class="home-roles" aria-labelledby="home-roles-title">
           <div class="home-roles-heading">
-            <div><p class="eyebrow">選擇你的角色</p><h2 id="home-roles-title">十種企業，各有一盤生意</h2></div>
-            <p>下方是開局、尚無事件時「每季」的基準收支，單位為遊戲幣。每家起始現金 1,200、投資資產 800。收入減去支出就是預估淨利；事件、員工調整和聯準會政策會改變實際數字。</p>
+            <p class="eyebrow">選擇你的角色</p><h2 id="home-roles-title">十種企業，各有一盤生意</h2>
           </div>
-          <div id="home-roles" class="home-role-grid"></div>
+          <details class="home-roles-disclosure">
+            <summary>點開查看十種企業的故事與收支 <span aria-hidden="true">⌄</span></summary>
+            <div class="home-roles-content">
+              <p>以下是開局、尚無事件時的每季基準值，單位為遊戲幣。每家起始現金 1,200、投資資產 800。事件、員工調整和聯準會政策會改變實際數字。</p>
+              <div id="home-roles" class="home-role-grid"></div>
+            </div>
+          </details>
         </section>
       </section>
       <div id="setup" class="setup-wrap" hidden>
