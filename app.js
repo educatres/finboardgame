@@ -26,7 +26,7 @@ const tabId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;
 let channel=null;
 try{if('BroadcastChannel' in globalThis)channel=new BroadcastChannel(storageKey)}catch{}
 let state=null,page='home',tab='business',snapshotSelection='latest',setupPlayers=[{name:'玩家 1',roleId:'auto'},{name:'玩家 2',roleId:'electronics'}],toastTimer,resetAt=0;
-let animation=null,animationSerial=0,diceShuffleTimer=null;
+let animation=null,animationSerial=0;
 let dismissedCardKey=null;
 const MOVE_MS=1000;
 try{const view=JSON.parse(sessionStorage.getItem(viewKey));if(['business','events','dashboard','fed','history'].includes(view?.tab))tab=view.tab;if(typeof view?.snapshotSelection==='string')snapshotSelection=view.snapshotSelection}catch{}
@@ -36,7 +36,7 @@ function notify(message){const el=$('#toast');el.textContent=message;el.classLis
 function newGameId(){return globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`}
 function prepareNewSession(game){const previous=syncInfo(state);game.sync={gameId:newGameId(),revision:0,updatedAt:Math.max(Date.now(),(previous?.updatedAt||0)+1,resetAt+1),writerId:tabId}}
 function readStored(){try{const raw=localStorage.getItem(storageKey);return raw?importGame(raw):null}catch{return undefined}}
-function cancelAnimation(){animationSerial++;animation=null;clearInterval(diceShuffleTimer);diceShuffleTimer=null}
+function cancelAnimation(){animationSerial++;animation=null}
 function save(){
   if(!state)return;
   if(!state.sync)prepareNewSession(state);
@@ -119,28 +119,12 @@ function cardCenter(){
   }
   return null;
 }
-const pipPositions={1:[5],2:[1,9],3:[1,5,9],4:[1,3,7,9],5:[1,3,5,7,9],6:[1,3,4,6,7,9]};
-function diceFaceValues(value){
-  const remaining=[1,2,3,4,5,6].filter(n=>n!==value&&n!==7-value),right=remaining[0],top=remaining.find(n=>n!==right&&n!==7-right);
-  return [value,right,top,7-top,7-right,7-value];
-}
-function diceFaceMarkup(face,value){
-  return `<span class="die-face face-${face}">${Array.from({length:9},(_,i)=>`<i class="${pipPositions[value].includes(i+1)?'pip':''}"></i>`).join('')}</span>`;
-}
-function diceMarkup(values){
-  return `<div class="dice-table" role="group" aria-label="兩顆六面骰子">${values.map((value,i)=>`<div class="die-travel" data-face-value="${value}" aria-label="第 ${i+1} 顆骰子：${value} 點"><div class="die-cube" style="transform:${diceOrientation()}">${diceFaceValues(value).map((dots,face)=>diceFaceMarkup(face+1,dots)).join('')}</div><span class="die-shadow"></span></div>`).join('')}</div>`;
-}
-function diceOrientation(){
-  return 'rotateX(-30deg) rotateY(-32deg)';
-}
-function setDiePips(travel,value,index){
-  travel.dataset.faceValue=String(value);
-  travel.setAttribute('aria-label',`第 ${index+1} 顆骰子：${value} 點`);
-  const values=diceFaceValues(value);
-  travel.querySelectorAll('.die-face').forEach((face,faceIndex)=>{
-    const dots=pipPositions[values[faceIndex]];
-    face.querySelectorAll('i').forEach((pip,pipIndex)=>pip.classList.toggle('pip',dots.includes(pipIndex+1)));
-  });
+function slotMarkup(values){
+  return `<div class="slot-machine" role="group" aria-label="兩個 0 到 6 的拉霸轉輪">${values.map((value,i)=>{
+    const position=animation?.reelPositions?.[i]??value;
+    const cells=Array.from({length:49},(_,cell)=>`<strong class="slot-cell">${cell%7}</strong>`).join('');
+    return `<span class="slot-reel ${animation?.stage==='rolling'&&animation.spinning[i]?'spinning':''}" aria-label="第 ${i+1} 個轉輪：${value}"><span class="slot-strip" style="transform:translateY(-${position*100}%)">${cells}</span></span>`;
+  }).join('')}</div>`;
 }
 function renderBoard(){
   const pos=state.players.map(p=>({p,index:animation?.playerId===p.id?animation.position:p.position}));
@@ -150,15 +134,15 @@ function renderBoard(){
     return `<div class="tile ${tile.type} ${animation?.position===i?'tile-active':''} ${animation?.visited.has(i)?'tile-visited':''}" data-tile-index="${i}" style="grid-row:${row};grid-column:${col}" title="${h(tileName(tile,i))}"><span class="tile-number">${String(i).padStart(2,'0')}</span><span class="tile-type">${h(tileName(tile,i))}</span><span class="tile-icon">${tile.type==='global'?'◎':tile.type==='personal'?'◇':tile.type==='sector'?'▦':'↗'}</span><div class="tile-tokens">${tokens}</div></div>`;
   }).join('');
   const legacyRoll=state.dice!==null&&state.reels?.length===3&&!animation;
-  const values=animation?.stage==='rolling'?[1,1]:state.reels?.length===2?state.reels:[1,1];
-  const diceDisplay=legacyRoll?`<div class="legacy-roll">舊回合點數<br><strong>${state.reels.join(' + ')} = ${state.dice}</strong></div>`:diceMarkup(values);
-  const total=animation?.stage==='rolling'?'骰子滾動中…':state.dice===null?'擲骰子前進':`前進 ${state.dice} 格`;
-  $('#board').innerHTML=tiles+`<div class="board-center">${cardCenter()||`<div class="center-icon">⌁</div><h3>市場正在運轉</h3><p>擲兩顆骰子 · 逐格前進 · 每季結算</p>${diceDisplay}<div class="dice-total">${total}</div><small>${animation?.stage==='rolling'?'骰子正在桌上滾動、跳躍':animation?.stage==='result'?'點數已出現，稍後開始移動':animation?.stage==='moving'?'棋子每秒前進一格':'經過起點可獲得 250 遊戲幣'}</small>`}</div>`;
+  const values=animation?.displayReels||(state.reels?.length===2?state.reels:[0,0]);
+  const slotDisplay=legacyRoll?`<div class="legacy-roll">舊回合點數<br><strong>${state.reels.join(' + ')} = ${state.dice}</strong></div>`:slotMarkup(values);
+  const total=animation?.stage==='rolling'?'數字跳動中…':state.dice===null?'啟動拉霸前進':state.dice===0?'原地停留':`前進 ${state.dice} 格`;
+  $('#board').innerHTML=tiles+`<div class="board-center">${cardCenter()||`<div class="center-icon">⌁</div><h3>市場正在運轉</h3><p>兩輪拉霸 · 逐格前進 · 每季結算</p>${slotDisplay}<div class="slot-total">${total}</div><small>${animation?.stage==='rolling'?'兩個數字依序停下':animation?.stage==='result'?'結果已出現，稍後開始移動':state.dice===0?'本次停留原地，不抽事件卡':animation?.stage==='moving'?'棋子每秒前進一格':'經過起點可獲得 250 遊戲幣'}</small>`}</div>`;
 }
 function actionRow(id,buttons,min=1){return `<div class="action-row"><input id="${id}" type="number" min="${min}" step="1" value="${id==='staff-count'?10:100}" aria-label="${id==='staff-count'?'人數':'金額'}">${buttons.map(([label,action])=>`<button type="button" data-action="${action}">${label}</button>`).join('')}</div>`}
 function renderTurn(){
   const p=currentPlayer(),r=role(p.roleId),done=state.phase==='manage',finished=state.status!=='playing';
-  if(animation){$('#turn-content').innerHTML=`<h2 class="turn-name" style="color:${colors[p.color]}">${h(p.name)}</h2><p class="turn-role">${h(r.name)} · ${h(r.sector)}</p><div class="turn-steps"><span class="done"></span><span class="done"></span><span></span></div><p class="turn-meta">${animation.stage==='rolling'?'兩顆骰子在桌上滾動、跳躍…':animation.stage==='result'?'點數已停定，稍後開始移動。':`擲出 ${animation.reels.join(' + ')} = ${animation.dice}，棋子每秒前進一格。`}</p><button class="primary" disabled>請稍候…</button>`;return}
+  if(animation){$('#turn-content').innerHTML=`<h2 class="turn-name" style="color:${colors[p.color]}">${h(p.name)}</h2><p class="turn-role">${h(r.name)} · ${h(r.sector)}</p><div class="turn-steps"><span class="done"></span><span class="done"></span><span></span></div><p class="turn-meta">${animation.stage==='rolling'?'兩個數字正在跳動…':animation.stage==='result'?'結果已停定，稍後開始移動。':animation.dice===0?'拉出 0 + 0 = 0，棋子停留原地。':`拉出 ${animation.reels.join(' + ')} = ${animation.dice}，棋子每秒前進一格。`}</p><button class="primary" disabled>請稍候…</button>`;return}
   if(finished){
     const winners=state.players.filter(x=>state.winnerIds.includes(x.id)).map(x=>x.name).join('、');
     const cause=state.status==='bankruptcy'?'有玩家破產':state.status==='goal'?'有人達成淨資產目標':'到達季數上限';
@@ -167,10 +151,10 @@ function renderTurn(){
   }
   if(state.phase==='draw'||currentCard()){
     const waiting=state.phase==='draw';
-    $('#turn-content').innerHTML=`<h2 class="turn-name" style="color:${colors[p.color]}">${h(p.name)}</h2><p class="turn-role">${h(r.name)} · ${h(r.sector)}</p><div class="turn-steps"><span class="done"></span><span class="done"></span><span></span></div><p class="turn-meta">擲出 <strong>${state.reels.join(' + ')} = ${state.dice}</strong>，停在「${h(tileName(BOARD[p.position],p.position))}」。${waiting?'請點棋盤中央流動的卡片，親手抽出事件。':'事件已翻開。看完卡片後，按「繼續經營」。'}</p>`;
+    $('#turn-content').innerHTML=`<h2 class="turn-name" style="color:${colors[p.color]}">${h(p.name)}</h2><p class="turn-role">${h(r.name)} · ${h(r.sector)}</p><div class="turn-steps"><span class="done"></span><span class="done"></span><span></span></div><p class="turn-meta">拉出 <strong>${state.reels.join(' + ')} = ${state.dice}</strong>，停在「${h(tileName(BOARD[p.position],p.position))}」。${waiting?'請點棋盤中央流動的卡片，親手抽出事件。':'事件已翻開。看完卡片後，按「繼續經營」。'}</p>`;
     return;
   }
-  $('#turn-content').innerHTML=`<h2 class="turn-name" style="color:${colors[p.color]}">${h(p.name)}</h2><p class="turn-role">${h(r.name)} · ${h(r.sector)}</p><div class="turn-steps"><span class="done"></span><span class="${done?'done':''}"></span><span></span></div>${!done?`<p class="turn-meta">輪到你擲兩顆骰子。每顆有 1–6 點，點數相加就是前進格數。</p><button class="primary" data-action="roll">擲骰子　⚄</button>`:`<p class="turn-meta">擲出 <strong>${state.reels?.join(' + ')||'舊回合'} = ${state.dice}</strong>，停在「${h(tileName(BOARD[p.position],p.position))}」。完成經營後交給下一位玩家。</p><div class="action-block"><h4>員工調整 · 目前 ${state.companies[p.roleId].headcount} 人</h4><p>聘僱與裁員會改變全市場失業率及本企業人力成本。</p>${actionRow('staff-count',[['聘僱','hire'],['裁員','layoff']])}</div><div class="action-block"><h4>銀行借貸 · 未償 ${money(state.companies[p.roleId].debt)}</h4><p>借款增加現金與負債，不計入收入。銀行流動資產 ${money(state.bank.liquidAssets)}。</p>${actionRow('loan-amount',[['借款','loan'],['還款','repay']])}</div>${p.roleId==='bank'?`<div class="action-block"><h4>銀行壞帳</h4><p>目前不良放款 ${money(state.bank.nonperformingLoans)}。</p>${actionRow('bad-amount',[['認列','mark-bad'],['收回','recover-bad']])}</div>`:''}<button class="secondary" style="margin-top:18px" data-action="end-turn">${state.turnIndex===state.players.length-1?'結算本季 →':'交給下一位 →'}</button>`}`;
+  $('#turn-content').innerHTML=`<h2 class="turn-name" style="color:${colors[p.color]}">${h(p.name)}</h2><p class="turn-role">${h(r.name)} · ${h(r.sector)}</p><div class="turn-steps"><span class="done"></span><span class="${done?'done':''}"></span><span></span></div>${!done?`<p class="turn-meta">輪到你啟動拉霸。兩個轉輪各顯示 0–6，相加就是前進格數。</p><button class="primary" data-action="roll">啟動拉霸　▦</button>`:`<p class="turn-meta">拉出 <strong>${state.reels?.join(' + ')||'舊回合'} = ${state.dice}</strong>，停在「${h(tileName(BOARD[p.position],p.position))}」。${state.dice===0?'本次原地停留，不抽事件卡。':'完成經營後交給下一位玩家。'}</p><div class="action-block"><h4>員工調整 · 目前 ${state.companies[p.roleId].headcount} 人</h4><p>聘僱與裁員會改變全市場失業率及本企業人力成本。</p>${actionRow('staff-count',[['聘僱','hire'],['裁員','layoff']])}</div><div class="action-block"><h4>銀行借貸 · 未償 ${money(state.companies[p.roleId].debt)}</h4><p>借款增加現金與負債，不計入收入。銀行流動資產 ${money(state.bank.liquidAssets)}。</p>${actionRow('loan-amount',[['借款','loan'],['還款','repay']])}</div>${p.roleId==='bank'?`<div class="action-block"><h4>銀行壞帳</h4><p>目前不良放款 ${money(state.bank.nonperformingLoans)}。</p>${actionRow('bad-amount',[['認列','mark-bad'],['收回','recover-bad']])}</div>`:''}<button class="secondary" style="margin-top:18px" data-action="end-turn">${state.turnIndex===state.players.length-1?'結算本季 →':'交給下一位 →'}</button>`}`;
 }
 function activeForPlayer(a,p){return a.scope==='global'||a.scope==='personal'&&a.ownerId===p.id||a.scope==='sector'&&a.sector===role(p.roleId).sector}
 function effectTextForActive(a,roleId){
@@ -194,7 +178,7 @@ function renderEvents(){
     const e=event(a.eventId),remaining=eventRemaining(a,state.round),age=state.round-a.startedRound;
     const target=a.scope==='global'?'全市場適用企業':a.scope==='personal'?`${state.players.find(p=>p.id===a.ownerId)?.name||'玩家'}本人`:`${a.sector}企業`;
     return `<article class="event-card" style="--event-color:${scopeColor[a.scope]}"><div class="event-head"><span class="eyebrow">${e.id} · ${scopes[a.scope]}</span><span class="remaining">剩 ${remaining} 季</span></div><h3>${h(e.name)}</h3><p>${h(target)} · 本季倍率 ${decimal(e.decay[age]*100,1)}%</p><div class="effect-list">${e.effects.map(x=>`<span class="effect-chip">${METRIC_LABELS[x.metric]} ${x.pct>=0?'+':''}${decimal(x.pct*e.decay[age],1)}%</span>`).join('')}</div></article>`;
-  }).join(''):'<div class="empty-state">目前沒有作用中的事件。擲骰子並停在事件格即可抽卡。</div>';
+  }).join(''):'<div class="empty-state">目前沒有作用中的事件。啟動拉霸並停在事件格即可抽卡。</div>';
   $('#event-library').innerHTML=[['全球事件',GLOBAL_EVENTS],['個人事件',PERSONAL_EVENTS],['產業事件',SECTOR_EVENTS]].flatMap(([category,items])=>items.map(e=>`<div class="library-item"><div><strong>${e.id} · ${h(e.name)}</strong><p>${category}${e.sector?` · ${h(e.sector)}`:''} · ${e.effects.map(x=>`${METRIC_LABELS[x.metric]} ${x.pct>=0?'+':''}${x.pct}%`).join('、')}</p></div><span>${e.duration} 季</span></div>`)).join('');
 }
 
@@ -229,7 +213,7 @@ function renderFed(){
   $('#fed-body').innerHTML=`<div class="fed-hero"><div><span>第 ${latest.round} 季已生效利率</span><strong>${decimal(latest.fedRatePct,2)}%</strong></div><div><span>候選／採用規則</span><strong>${decision.ruleId||'無'}</strong></div><div><span>本季政策結論</span><strong>${h(decision.action)}</strong></div><div><span>生效季數／冷卻</span><strong>第 ${decision.nextEffectiveRound} 季 · ${latest.rateCooldownRounds} 季</strong></div></div><details id="fed-rules" class="disclosure-panel" ${rulesOpen?'open':''}><summary><span><small>RULE EVALUATION</small><strong>規則判斷</strong><em>優先序：F08 → F09 → F07 → F03 → F01 → F06 → F04 → F02 → F05 → F10</em></span><i aria-hidden="true">⌄</i></summary><div class="disclosure-content">${renderRuleList(evals)}</div></details>`;
 }
 function chart(data,key,title,color){if(!data.length)return `<div class="empty-state">${title}：等待第一季結算。</div>`;const values=data.map(x=>x[key]).filter(Number.isFinite),min=Math.min(...values),max=Math.max(...values),span=max-min||1;const points=data.map((s,i)=>`${35+(i/(Math.max(data.length-1,1)))*660},${165-((s[key]-min)/span)*125}`).join(' ');return `<div class="history-chart"><h3>${title}</h3><svg viewBox="0 0 730 190" role="img" aria-label="${title}歷史折線圖"><line x1="30" y1="165" x2="700" y2="165" stroke="#dfe8e3"/><polyline points="${points}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${data.map((s,i)=>{const x=35+(i/Math.max(data.length-1,1))*660,y=165-((s[key]-min)/span)*125;return `<circle cx="${x}" cy="${y}" r="4" fill="${color}"><title>第 ${s.round} 季：${decimal(s[key],1)}</title></circle><text x="${x}" y="185" text-anchor="middle" font-size="10" fill="#899b93">${s.round}</text>`}).join('')}</svg><div class="chart-legend"><span><i style="background:${color}"></i>${title} · 依已結算快照</span></div></div>`}
-function renderHistory(){const data=state.economicHistory;$('#history-body').innerHTML=`<div class="history-layout"><div>${chart(data,'revenueTotal','全市場營收', '#0e9186')}${chart(data,'stockIndex','股市指數', '#597bae')}</div><div><div class="history-chart"><h3>各季數據</h3>${data.length?`<div style="overflow:auto"><table class="history-table"><thead><tr><th>季數</th><th>通膨</th><th>成長</th><th>失業</th><th>利率</th></tr></thead><tbody>${data.slice().reverse().map(s=>`<tr><td>${s.round}</td><td>${decimal(s.inflationPct,1)}%</td><td>${s.growthPct===null?'—':decimal(s.growthPct,1)+'%'}</td><td>${decimal(s.unemploymentPct,1)}%</td><td>${decimal(s.fedRatePct,2)}%</td></tr>`).join('')}</tbody></table></div>`:'<p class="muted">尚無已結算季數。</p>'}</div><div class="history-chart"><h3>遊戲動態</h3><div class="log-list">${state.log.length?state.log.slice(0,60).map(x=>`<div class="log-item">${h(x)}</div>`).join(''):'<div class="log-item">等待玩家擲骰。</div>'}</div></div></div></div>`}
+function renderHistory(){const data=state.economicHistory;$('#history-body').innerHTML=`<div class="history-layout"><div>${chart(data,'revenueTotal','全市場營收', '#0e9186')}${chart(data,'stockIndex','股市指數', '#597bae')}</div><div><div class="history-chart"><h3>各季數據</h3>${data.length?`<div style="overflow:auto"><table class="history-table"><thead><tr><th>季數</th><th>通膨</th><th>成長</th><th>失業</th><th>利率</th></tr></thead><tbody>${data.slice().reverse().map(s=>`<tr><td>${s.round}</td><td>${decimal(s.inflationPct,1)}%</td><td>${s.growthPct===null?'—':decimal(s.growthPct,1)+'%'}</td><td>${decimal(s.unemploymentPct,1)}%</td><td>${decimal(s.fedRatePct,2)}%</td></tr>`).join('')}</tbody></table></div>`:'<p class="muted">尚無已結算季數。</p>'}</div><div class="history-chart"><h3>遊戲動態</h3><div class="log-list">${state.log.length?state.log.slice(0,60).map(x=>`<div class="log-item">${h(x)}</div>`).join(''):'<div class="log-item">等待玩家啟動拉霸。</div>'}</div></div></div></div>`}
 function render(){
   const onHome=page==='home';
   $('#home').hidden=!onHome;
@@ -268,53 +252,37 @@ function moveTokenStep(position){
     token.style.transform='translate(0,0)';
   });
 }
-function animateDiceOnTable(){
-  document.querySelectorAll('#board .die-travel').forEach((travel,i)=>{
-    const cube=travel.querySelector('.die-cube');
-    const direction=i===0?1:-1;
-    const offset=()=>Math.round((Math.random()*28+10)*direction);
-    travel.animate([
-      {transform:'translate(0,0)',offset:0},
-      {transform:`translate(${offset()}px,-48px)`,offset:.17},
-      {transform:`translate(${offset()}px,6px)`,offset:.32},
-      {transform:`translate(${offset()}px,-32px)`,offset:.49},
-      {transform:`translate(${offset()}px,4px)`,offset:.64},
-      {transform:`translate(${offset()}px,-17px)`,offset:.78},
-      {transform:'translate(0,0)',offset:1}
-    ],{duration:2500,easing:'ease-in-out'});
-    cube.animate([
-      {transform:'rotateX(0deg) rotateY(0deg) rotateZ(0deg)',offset:0},
-      {transform:`rotateX(${400+Math.random()*80}deg) rotateY(${310+Math.random()*90}deg) rotateZ(80deg)`,offset:.32},
-      {transform:`rotateX(${760+Math.random()*90}deg) rotateY(${690+Math.random()*100}deg) rotateZ(190deg)`,offset:.64},
-      {transform:`rotateX(${1030+Math.random()*90}deg) rotateY(${990+Math.random()*100}deg) rotateZ(270deg)`,offset:.82},
-      {transform:diceOrientation(),offset:1}
-    ],{duration:2500,easing:'cubic-bezier(.25,.7,.2,1)'});
-  });
-}
 function beginRollAnimation({playerId,from,dice,reels}){
   if(!state||state.players[state.turnIndex]?.id!==playerId||state.dice!==dice)return;
   if(document.hidden||tab!=='business'||page!=='game')return;
   cancelAnimation();
   const serial=animationSerial;
-  const finalReels=Array.isArray(reels)&&reels.length===2?reels:[1,1];
-  animation={playerId,position:from,dice,reels:finalReels,visited:new Set(),stage:'rolling'};
+  const finalReels=Array.isArray(reels)&&reels.length===2?reels:[0,0];
+  animation={playerId,position:from,dice,reels:finalReels,displayReels:[0,0],reelPositions:[0,0],spinning:[true,true],visited:new Set(),stage:'rolling'};
   renderBoard();renderTurn();
-  animateDiceOnTable();
-  diceShuffleTimer=setInterval(()=>{
-    if(serial!==animationSerial)return;
-    const current=[];
-    document.querySelectorAll('#board .die-travel').forEach((travel,i)=>{
-      const previous=Number(travel.dataset.faceValue)||1;
-      const value=(previous+Math.floor(Math.random()*5))%6+1;
-      setDiePips(travel,value,i);
-      current.push(value);
-    });
-    if(current.length===2){const label=$('#board .dice-total');if(label)label.textContent=`點數跳動：${current.join(' + ')}`}
-  },260);
   void (async()=>{
-    await pause(2500);
+    const stopTicks=[10,17];
+    for(let tick=0;tick<19;tick++){
+      await pause(125);
+      if(serial!==animationSerial)return;
+      const windows=document.querySelectorAll('#board .slot-reel');
+      for(let i=0;i<2;i++){
+        if(!animation.spinning[i])continue;
+        if(tick<stopTicks[i])animation.reelPositions[i]++;
+        else {
+          const difference=(finalReels[i]-animation.reelPositions[i]%7+7)%7;
+          animation.reelPositions[i]+=difference||7;
+          animation.spinning[i]=false;
+        }
+        animation.displayReels[i]=animation.reelPositions[i]%7;
+        const reel=windows[i];if(!reel)continue;
+        reel.querySelector('.slot-strip').style.transform=`translateY(-${animation.reelPositions[i]*100}%)`;
+        reel.classList.toggle('spinning',animation.spinning[i]);
+        reel.setAttribute('aria-label',`第 ${i+1} 個轉輪：${animation.displayReels[i]}`);
+      }
+    }
     if(serial!==animationSerial)return;
-    clearInterval(diceShuffleTimer);diceShuffleTimer=null;
+    animation.displayReels=[...finalReels];animation.spinning=[false,false];
     animation.stage='result';renderBoard();renderTurn();
     await pause(1000);
     if(serial!==animationSerial)return;
@@ -339,7 +307,7 @@ async function rollWithAnimation(){
       result=rollDice(state);save();render();
     });
     if(result)beginRollAnimation({playerId,from,dice:result.dice,reels:result.reels});
-  }catch(e){notify(e.message||'無法擲骰子')}
+  }catch(e){notify(e.message||'無法啟動拉霸')}
 }
 
 $('#add-player').addEventListener('click',()=>{if(setupPlayers.length<4){const used=new Set(setupPlayers.map(x=>x.roleId));setupPlayers.push({name:`玩家 ${setupPlayers.length+1}`,roleId:ROLES.find(x=>!used.has(x.id)).id});renderSetup()}});
