@@ -71,14 +71,14 @@ export function movementPath(from,steps,length=BOARD.length){
   return Array.from({length:steps},(_,i)=>(from+i+1)%length);
 }
 export function rollDice(state,forced){
-  if(state.status!=='playing'||state.phase!=='roll')throw Error('現在無法啟動拉霸。');
+  if(state.status!=='playing'||state.phase!=='roll')throw Error('現在無法擲骰子。');
   const player=state.players[state.turnIndex];
-  const reels=forced??Array.from({length:3},()=>Math.floor(nextRandom(state)*4));
-  if(!Array.isArray(reels)||reels.length!==3||reels.some(n=>!Number.isInteger(n)||n<0||n>3))throw Error('拉霸須有三個 0–3 的數字。');
+  const reels=forced??Array.from({length:2},()=>Math.floor(nextRandom(state)*6)+1);
+  if(!Array.isArray(reels)||reels.length!==2||reels.some(n=>!Number.isInteger(n)||n<1||n>6))throw Error('請擲出兩顆 1–6 點的骰子。');
   const dice=reels.reduce((sum,n)=>sum+n,0),old=player.position,path=movementPath(old,dice);
   player.position=path.at(-1)??old;
   state.lastDraw=null;
-  state.log.unshift(`${player.name}拉出 ${reels.join(' + ')} = ${dice}，前進 ${dice} 格。`);
+  state.log.unshift(`${player.name}擲出 ${reels.join(' + ')} = ${dice}，前進 ${dice} 格。`);
   if(old+dice>=BOARD.length){state.companies[player.roleId].cash+=250;state.log.unshift(`${player.name}經過起點，獲得 250 遊戲幣。`)}
   state.dice=dice;state.reels=[...reels];
   const tile=BOARD[player.position];
@@ -200,7 +200,7 @@ function applyDecision(state,decision){
   if(decision.kind!=='none')state.log.unshift(`第 ${state.round} 季生效｜聯準會 ${decision.action}。`);
 }
 export function endTurn(state){
-  if(state.status!=='playing'||state.phase!=='manage')throw Error('請先啟動拉霸。');
+  if(state.status!=='playing'||state.phase!=='manage')throw Error('請先擲骰子並抽卡。');
   if(state.turnIndex<state.players.length-1){state.turnIndex++;state.phase='roll';state.dice=null;state.reels=null;state.lastDraw=null;return null}
   const result=settleSeason(state);return result;
 }

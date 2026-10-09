@@ -24,7 +24,7 @@
         </div>
         <div class="home-guide" aria-label="玩法步驟">
           <div class="home-step"><span>01</span><div><h2>選玩家和企業</h2><p>選 2–4 位玩家，每人選不同的企業。開局時也能調整淨資產目標和最多季數。</p></div></div>
-          <div class="home-step"><span>02</span><div><h2>拉霸，走棋盤</h2><p>輪到你時，按「啟動拉霸」。三個轉輪各出現 0–3，相加就是前進格數。總和是 0 就停在原地，不抽新卡。</p></div></div>
+          <div class="home-step"><span>02</span><div><h2>擲骰子，走棋盤</h2><p>輪到你時，擲兩顆六面骰。兩顆骰子的點數相加，就是棋子前進的格數。</p></div></div>
           <div class="home-step"><span>03</span><div><h2>停格後點卡抽事件</h2><p>停在事件格時，點擊棋盤中央流動的卡片，事件才會翻開。全球事件影響所有適用企業；個人事件只影響你；產業事件影響同產業的企業。事件可能持續好幾季。</p></div></div>
           <div class="home-step"><span>04</span><div><h2>經營你的企業</h2><p>你可以聘僱或裁員，也可以借款或還款。看一下收入、成本和淨資產，再交給下一位玩家。</p></div></div>
           <div class="home-step"><span>05</span><div><h2>結算一季，決定勝負</h2><p>所有玩家都完成後，遊戲結算一季。有人達到淨資產目標、有人破產，或到達季數上限時，對局就會結束。達標者獲勝；若無人達標，未破產且淨資產最高的玩家獲勝。</p></div></div>
@@ -44,7 +44,7 @@
         </section>
       </section>
       <div id="setup" class="setup-wrap" hidden>
-        <section class="setup-hero"><p class="eyebrow">一台電腦・輪流遊玩・一回合代表一季</p><h1>啟動你的<br><em>經濟新局。</em></h1><p>選擇企業，啟動三輪數字拉霸，讓事件改寫收入、成本與資產。棋子每秒前進一格；當所有玩家完成行動，市場與聯準會就會結算這一季。</p><div class="setup-notes"><span>24 格經濟棋盤</span><span>10 種企業</span><span>10 條聯準會規則</span></div></section>
+        <section class="setup-hero"><p class="eyebrow">一台電腦・輪流遊玩・一回合代表一季</p><h1>啟動你的<br><em>經濟新局。</em></h1><p>選擇企業，擲兩顆骰子前進，讓事件改寫收入、成本與資產。棋子每秒前進一格；當所有玩家完成行動，市場與聯準會就會結算這一季。</p><div class="setup-notes"><span>24 格經濟棋盤</span><span>10 種企業</span><span>10 條聯準會規則</span></div></section>
         <section class="setup-card"><div class="section-heading"><div><p class="eyebrow">建立對局</p><h2>設定玩家</h2></div><span class="step-pill">2–4 人</span></div><div id="setup-players"></div><button id="add-player" type="button" class="add-player">＋ 新增玩家</button><div class="setup-options"><label>勝利淨資產目標<input id="target-input" type="number" min="2000" step="500" value="5500"></label><label>最多季數<input id="rounds-input" type="number" min="2" max="50" value="12"></label><label>亂數種子<input id="seed-input" type="number" value="20261009"></label></div><p class="helper">淨資產 = 現金 + 投資資產 − 借款。達標、玩家破產或季數上限到達時結束。</p><p id="setup-error" class="form-error" role="alert"></p><button id="start-btn" class="primary big" type="button">開始遊戲 <span>→</span></button></section>
       </div>
       <div id="game" hidden>

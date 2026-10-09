@@ -81,47 +81,46 @@ test('利率決策在下一季才生效，事件消失不會重設政策利率',
   s.activeEvents=[];s.round=7;
   assert.equal(makeSnapshot(s).fedRatePct,4.75);
 });
-test('三輪拉霸後才結算全市場一季',()=>{
+test('兩顆骰子擲出後才結算全市場一季',()=>{
   const s=game();assert.equal(BOARD.length,24);
-  rollDice(s,[1,0,0]);assert.equal(s.phase,'draw');assert.equal(s.activeEvents.length,0);
+  rollDice(s,[2,2]);assert.equal(s.phase,'draw');assert.equal(s.activeEvents.length,0);
   assert.throws(()=>endTurn(s));assert.throws(()=>adjustStaff(s,'player-1',1));
   assert.equal(drawEvent(s).scope,'global');assert.equal(s.phase,'manage');assert.throws(()=>drawEvent(s));
   assert.equal(endTurn(s),null);assert.equal(s.turnIndex,1);assert.equal(s.round,1);
-  rollDice(s,[1,1,0]);drawEvent(s);const result=endTurn(s);
+  rollDice(s,[1,1]);drawEvent(s);const result=endTurn(s);
   assert.equal(result.snapshot.round,1);assert.equal(s.round,2);assert.equal(s.turnIndex,0);assert.equal(s.economicHistory.length,1);
 });
 test('棋子逐格路徑與實際落點一致，經過起點只領一次獎金',()=>{
   assert.deepEqual(movementPath(22,5),[23,0,1,2,3]);
   const s=game();s.players[0].position=22;
-  const result=rollDice(s,[3,2,0]);
-  assert.deepEqual(result.reels,[3,2,0]);
+  const result=rollDice(s,[3,2]);
+  assert.deepEqual(result.reels,[3,2]);
   assert.equal(result.dice,5);
   assert.deepEqual(result.path,[23,0,1,2,3]);
   assert.equal(s.players[0].position,3);
   assert.equal(s.companies.auto.cash,1450);
 });
-test('三個零原地停留且不重抽事件；最大值為九格',()=>{
-  const s=game();s.players[0].position=1;
-  const zero=rollDice(s,[0,0,0]);
-  assert.equal(zero.dice,0);assert.deepEqual(zero.path,[]);
-  assert.equal(s.players[0].position,1);assert.equal(s.activeEvents.length,0);assert.equal(s.phase,'manage');assert.equal(s.lastDraw,null);
-  assert.throws(()=>drawEvent(s));
-  assert.deepEqual(movementPath(5,9),[6,7,8,9,10,11,12,13,14]);
-  const next=game();assert.equal(rollDice(next,[3,3,3]).dice,9);
-  assert.throws(()=>rollDice(game(),[4,0,0]));
+test('兩顆六面骰的步數範圍為 2–12 格',()=>{
+  assert.deepEqual(movementPath(5,12),[6,7,8,9,10,11,12,13,14,15,16,17]);
+  const low=game();assert.equal(rollDice(low,[1,1]).dice,2);
+  const high=game();assert.equal(rollDice(high,[6,6]).dice,12);
+  assert.throws(()=>rollDice(game(),[0,1]));
+  assert.throws(()=>rollDice(game(),[7,1]));
+  assert.throws(()=>rollDice(game(),[1,1,1]));
 });
 test('繞回起點時不顯示事件卡',()=>{
-  const s=game();s.players[0].position=23;
-  rollDice(s,[1,0,0]);
+  const s=game();s.players[0].position=22;
+  rollDice(s,[1,1]);
   assert.equal(s.players[0].position,0);
   assert.equal(s.phase,'manage');
   assert.equal(s.activeEvents.length,0);
   assert.throws(()=>drawEvent(s));
 });
-test('固定種子可重現拉霸數字與事件',()=>{
+test('固定種子可重現骰子點數與事件',()=>{
   const a=game(),b=game();
   const x=rollDice(a),y=rollDice(b);
   assert.deepEqual(x.reels,y.reels);
+  assert.ok(x.reels.every(n=>n>=1&&n<=6));
   assert.equal(x.dice,y.dice);
   if(a.phase==='draw')assert.equal(drawEvent(a).eventId,drawEvent(b).eventId);
 });
