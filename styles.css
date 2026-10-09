@@ -105,3 +105,7 @@ h1,h2,h3,p{margin-top:0}h1,h2,h3{letter-spacing:-.025em}h1{font-size:clamp(38px,
 @media(max-width:960px){.home-page{grid-template-columns:1fr;gap:34px;padding:44px 2% 68px}.home-hero{position:static;padding-top:0}.home-hero h1{font-size:clamp(40px,6vw,60px)}.home-hero>p:not(.eyebrow):not(.home-status){max-width:680px}}
 @media(max-width:760px){.topbar{flex-wrap:wrap;padding:10px 0}.top-actions{width:100%;justify-content:space-between;flex-wrap:wrap}.home-page{padding:40px 0 60px}.home-hero>p:not(.eyebrow):not(.home-status){font-size:16px}.home-step{padding:22px 0}.home-step h2{font-size:18px}.home-step p{font-size:13px}.home-formula{margin-left:0}.home-roles{margin-top:24px}.home-role-grid{grid-template-columns:1fr}.home-role-story{min-height:0}}
 @media(max-width:440px){.home-role{padding:21px 18px 17px}.home-role-totals strong{font-size:17px}.home-role-flows{grid-template-columns:1fr;gap:16px}}
+.brand .round-badge{width:68px;height:60px;flex:none;border-radius:10px}
+.brand .round-badge span,.brand .round-badge small{font-size:8px;line-height:1.1}
+.brand .round-badge strong{font-size:25px;line-height:1}
+@media(max-width:760px){.brand .round-badge{width:60px;height:50px}.brand .round-badge strong{font-size:20px}}
