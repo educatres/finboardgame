@@ -13,7 +13,7 @@ const viewKey='economy-board-view-v1';
 const tabId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;
 let channel=null;
 try{if('BroadcastChannel' in globalThis)channel=new BroadcastChannel(storageKey)}catch{}
-let state=null,tab='business',snapshotSelection='latest',setupPlayers=[{name:'玩家 1',roleId:'auto'},{name:'玩家 2',roleId:'electronics'}],toastTimer,resetAt=0;
+let state=null,page='home',tab='business',snapshotSelection='latest',setupPlayers=[{name:'玩家 1',roleId:'auto'},{name:'玩家 2',roleId:'electronics'}],toastTimer,resetAt=0;
 let animation=null,animationSerial=0;
 const MOVE_MS=1000;
 try{const view=JSON.parse(sessionStorage.getItem(viewKey));if(['business','events','dashboard','fed','history'].includes(view?.tab))tab=view.tab;if(typeof view?.snapshotSelection==='string')snapshotSelection=view.snapshotSelection}catch{}
@@ -161,6 +161,15 @@ function renderFed(){
 function chart(data,key,title,color){if(!data.length)return `<div class="empty-state">${title}：等待第一季結算。</div>`;const values=data.map(x=>x[key]).filter(Number.isFinite),min=Math.min(...values),max=Math.max(...values),span=max-min||1;const points=data.map((s,i)=>`${35+(i/(Math.max(data.length-1,1)))*660},${165-((s[key]-min)/span)*125}`).join(' ');return `<div class="history-chart"><h3>${title}</h3><svg viewBox="0 0 730 190" role="img" aria-label="${title}歷史折線圖"><line x1="30" y1="165" x2="700" y2="165" stroke="#dfe8e3"/><polyline points="${points}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${data.map((s,i)=>{const x=35+(i/Math.max(data.length-1,1))*660,y=165-((s[key]-min)/span)*125;return `<circle cx="${x}" cy="${y}" r="4" fill="${color}"><title>第 ${s.round} 季：${decimal(s[key],1)}</title></circle><text x="${x}" y="185" text-anchor="middle" font-size="10" fill="#899b93">${s.round}</text>`}).join('')}</svg><div class="chart-legend"><span><i style="background:${color}"></i>${title} · 依已結算快照</span></div></div>`}
 function renderHistory(){const data=state.economicHistory;$('#history-body').innerHTML=`<div class="history-layout"><div>${chart(data,'revenueTotal','全市場營收', '#0e9186')}${chart(data,'stockIndex','股市指數', '#597bae')}</div><div><div class="history-chart"><h3>各季數據</h3>${data.length?`<div style="overflow:auto"><table class="history-table"><thead><tr><th>季數</th><th>通膨</th><th>成長</th><th>失業</th><th>利率</th></tr></thead><tbody>${data.slice().reverse().map(s=>`<tr><td>${s.round}</td><td>${decimal(s.inflationPct,1)}%</td><td>${s.growthPct===null?'—':decimal(s.growthPct,1)+'%'}</td><td>${decimal(s.unemploymentPct,1)}%</td><td>${decimal(s.fedRatePct,2)}%</td></tr>`).join('')}</tbody></table></div>`:'<p class="muted">尚無已結算季數。</p>'}</div><div class="history-chart"><h3>遊戲動態</h3><div class="log-list">${state.log.length?state.log.slice(0,60).map(x=>`<div class="log-item">${h(x)}</div>`).join(''):'<div class="log-item">等待玩家擲骰。</div>'}</div></div></div></div>`}
 function render(){
+  const onHome=page==='home';
+  $('#home').hidden=!onHome;
+  $('#home-btn').classList.toggle('active',onHome);
+  if(onHome){
+    $('#setup').hidden=true;$('#game').hidden=true;
+    $('#home-play-btn').textContent=state?'返回對局 →':'設定玩家，開始遊戲 →';
+    $('#home-status').textContent=state?`已有對局 · 第 ${state.round} 季，返回後可繼續遊玩。`:'一台電腦就能開始，大家輪流操作。';
+    return;
+  }
   if(!state){$('#setup').hidden=false;$('#game').hidden=true;renderSetup();return}
   $('#setup').hidden=true;$('#game').hidden=false;
   $('#round-number').textContent=String(state.round).padStart(2,'0');$('#round-limit').textContent=`／${state.maxRounds} 季`;
@@ -174,7 +183,7 @@ const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function moveTokenStep(position){
   animation?.visited.add(position);
   const token=$('#board .token.moving'),destination=$(`#board [data-tile-index="${position}"] .tile-tokens`);
-  if(!token||!destination||tab!=='business')return;
+  if(!token||!destination||tab!=='business'||page!=='game')return;
   const from=token.getBoundingClientRect();
   $('#board .tile-active')?.classList.remove('tile-active');
   destination.closest('.tile').classList.add('tile-active','tile-visited');
@@ -191,7 +200,7 @@ function moveTokenStep(position){
 }
 function beginRollAnimation({playerId,from,dice,reels},showDraw=false,draw=null){
   if(!state||state.players[state.turnIndex]?.id!==playerId||state.dice!==dice)return;
-  if(document.hidden||tab!=='business'){if(showDraw&&tab==='business')showCard(draw);return}
+  if(document.hidden||tab!=='business'||page!=='game'){if(showDraw&&tab==='business'&&page==='game')showCard(draw);return}
   cancelAnimation();
   const serial=animationSerial;
   const finalReels=Array.isArray(reels)&&reels.length===3?reels:[0,0,0];
@@ -232,7 +241,7 @@ function beginRollAnimation({playerId,from,dice,reels},showDraw=false,draw=null)
     if(dice===0)await pause(400);
     if(serial!==animationSerial)return;
     animation=null;renderBoard();renderTurn();
-    if(showDraw&&tab==='business')showCard(draw);
+    if(showDraw&&tab==='business'&&page==='game')showCard(draw);
   })();
 }
 
@@ -253,7 +262,7 @@ $('#add-player').addEventListener('click',()=>{if(setupPlayers.length<4){const u
 $('#setup-players').addEventListener('input',e=>{if(e.target.dataset.setupName!==undefined)setupPlayers[Number(e.target.dataset.setupName)].name=e.target.value});
 $('#setup-players').addEventListener('change',e=>{if(e.target.dataset.setupRole!==undefined)setupPlayers[Number(e.target.dataset.setupRole)].roleId=e.target.value});
 $('#setup-players').addEventListener('click',e=>{const i=e.target.dataset.removePlayer;if(i!==undefined&&setupPlayers.length>2){setupPlayers.splice(Number(i),1);renderSetup()}});
-$('#start-btn').addEventListener('click',async()=>{try{await withGameLock(()=>{const saved=readStored();if(saved){adoptShared(saved);notify('已加入另一個頁籤的對局。');return}const next=createGame({players:setupPlayers,seed:$('#seed-input').value,targetWealth:$('#target-input').value,maxRounds:$('#rounds-input').value});prepareNewSession(next);state=next;$('#setup-error').textContent='';tab='business';snapshotSelection='preview';rememberView();save();render()})}catch(e){$('#setup-error').textContent=e.message}});
+$('#start-btn').addEventListener('click',async()=>{try{await withGameLock(()=>{const saved=readStored();if(saved){adoptShared(saved);notify('已加入另一個頁籤的對局。');return}const next=createGame({players:setupPlayers,seed:$('#seed-input').value,targetWealth:$('#target-input').value,maxRounds:$('#rounds-input').value});prepareNewSession(next);state=next;page='game';$('#setup-error').textContent='';tab='business';snapshotSelection='preview';rememberView();save();render()})}catch(e){$('#setup-error').textContent=e.message}});
 $('.tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(!b)return;tab=b.dataset.tab;rememberView();render();window.scrollTo({top:0,behavior:'smooth'})});
 $('#snapshot-select').addEventListener('change',e=>{snapshotSelection=e.target.value;rememberView();renderDashboard()});
 $('#game').addEventListener('click',e=>{
@@ -271,12 +280,14 @@ document.querySelectorAll('[data-close-modal]').forEach(x=>x.addEventListener('c
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeCard()});
 async function resetGame(){
   if(state&&!confirm('確定開始新遊戲？所有已開啟的頁籤都會返回設定畫面，建議先匯出備份。'))return;
-  await withGameLock(()=>{const stored=readStored();if(stored&&isNewerGame(stored,state))state=stored;clearSave();cancelAnimation();closeCard();state=null;tab='business';rememberView();render()});
+  await withGameLock(()=>{const stored=readStored();if(stored&&isNewerGame(stored,state))state=stored;clearSave();cancelAnimation();closeCard();state=null;page='game';tab='business';rememberView();render()});
 }
+$('#home-btn').addEventListener('click',()=>{page='home';closeCard();render();window.scrollTo({top:0,behavior:'smooth'})});
+$('#home-play-btn').addEventListener('click',()=>{page='game';render();window.scrollTo({top:0,behavior:'smooth'})});
 $('#new-game-btn').addEventListener('click',()=>{void resetGame()});
 $('#open-tab-btn').addEventListener('click',()=>{window.open(location.href,'_blank','noopener')});
 $('#export-btn').addEventListener('click',()=>{if(!state){notify('目前沒有可匯出的對局。');return}const blob=new Blob([exportGame(state)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`經濟棋局-第${state.round}季.json`;a.click();URL.revokeObjectURL(url)});
-$('#import-file').addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file)return;try{const imported=importGame(await file.text());await withGameLock(()=>{const stored=readStored();if(stored&&isNewerGame(stored,state))state=stored;prepareNewSession(imported);cancelAnimation();state=imported;tab='business';snapshotSelection='latest';rememberView();save();render()});notify('存檔已載入，其他頁籤也已更新。')}catch(err){notify(err.message||'無法讀取存檔')}e.target.value=''});
+$('#import-file').addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file)return;try{const imported=importGame(await file.text());await withGameLock(()=>{const stored=readStored();if(stored&&isNewerGame(stored,state))state=stored;prepareNewSession(imported);cancelAnimation();state=imported;page='game';tab='business';snapshotSelection='latest';rememberView();save();render()});notify('存檔已載入，其他頁籤也已更新。')}catch(err){notify(err.message||'無法讀取存檔')}e.target.value=''});
 window.addEventListener('storage',e=>{
   if(e.key!==storageKey)return;
   if(e.newValue){try{adoptShared(importGame(e.newValue))}catch{}}

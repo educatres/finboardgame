@@ -28,3 +28,19 @@ h1,h2,h3,p{margin-top:0}h1,h2,h3{letter-spacing:-.025em}h1{font-size:clamp(38px,
 @media(max-width:760px){.slot-machine{gap:4px;padding:5px}.slot-reel{--slot-cell:42px;width:37px}.slot-cell{font-size:26px}.slot-total{font-size:10px;margin-bottom:5px}}
 @media(max-width:440px){.slot-reel{--slot-cell:34px;width:30px}.slot-cell{font-size:21px}.slot-machine{margin-bottom:4px}.board-center .center-icon{margin-bottom:2px}}
 @media(max-width:760px){.disclosure-panel summary{padding:16px}.disclosure-panel summary span{align-items:flex-start;flex-direction:column;gap:4px}.disclosure-panel summary em{line-height:1.45}.disclosure-content{padding:14px}}
+
+.top-actions .quiet.active{background:#e5f1ed;color:var(--teal-dark);font-weight:800}
+.home-page{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1fr);gap:8%;padding:72px 3% 84px;align-items:start}
+.home-hero{position:sticky;top:48px;padding-top:44px}
+.home-hero h1{font-size:clamp(42px,4.2vw,60px);margin-bottom:28px}
+.home-hero>p:not(.eyebrow):not(.home-status){max-width:510px;color:#64747a;font-size:18px;line-height:1.85;margin-bottom:30px}
+.home-hero .primary{font-size:16px;padding:15px 22px}
+.home-status{font-size:12px;color:#879594;margin:15px 0 0}
+.home-guide{border-top:1px solid #d9dfda}
+.home-step{display:grid;grid-template-columns:43px 1fr;gap:18px;padding:26px 0 27px;border-bottom:1px solid #d9dfda}
+.home-step>span{color:var(--teal);font-size:16px;font-weight:800;letter-spacing:.04em;padding-top:4px}
+.home-step h2{font-size:21px;margin:0 0 8px}
+.home-step p{color:#63747a;font-size:14px;line-height:1.8;margin:0;max-width:560px}
+.home-formula{color:var(--teal-dark);font-size:15px;font-weight:800;margin:28px 0 0 61px}
+@media(max-width:960px){.home-page{grid-template-columns:1fr;gap:34px;padding:44px 2% 68px}.home-hero{position:static;padding-top:0}.home-hero h1{font-size:clamp(40px,6vw,60px)}.home-hero>p:not(.eyebrow):not(.home-status){max-width:680px}}
+@media(max-width:760px){.topbar{flex-wrap:wrap;padding:10px 0}.top-actions{width:100%;justify-content:space-between;flex-wrap:wrap}.home-page{padding:40px 0 60px}.home-hero>p:not(.eyebrow):not(.home-status){font-size:16px}.home-step{padding:22px 0}.home-step h2{font-size:18px}.home-step p{font-size:13px}.home-formula{margin-left:0}}
