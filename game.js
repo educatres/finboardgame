@@ -345,6 +345,18 @@ const roleStories={
   agriculture:'第一台貨車開進市場，司機等著你確認這批食品的去向。從原料到運輸都要算進成本，價格稍有變動，這季盈虧就可能改寫。',
   technology:'版本上線倒數，工程師還在修最後一個問題，客戶已打來確認交付時間。人才撐起服務收入，也讓人力成為每季最大的成本。'
 };
+const manageGuides={
+  auto:['交車期限就在眼前，產線每多開一班，薪資和材料也跟著增加。','先看人力與原料成本，再決定要聘僱、裁員或借款周轉。'],
+  electronics:['海外訂單催著出貨，零件、關稅與薪資正一項項吃掉利潤。','比較收入與材料成本，調整人手前先確認手上的現金。'],
+  retail:['客人湧進店裡，缺貨會失單，備貨太多又會壓住現金。','留意商品和人力成本，再決定是否增員或借款備貨。'],
+  bank:['櫃檯忙著放款和提款，每筆壞帳都考驗銀行的資金調度。','留意流動資產與壞帳，必要時認列或收回壞帳。'],
+  investment:['開盤數字不停跳動，投資收益與資產價值可能一季內翻轉。','先看投資損益與現金，再決定是否借款度過波動。'],
+  energy:['調度室亮到深夜，訂單增加，原料與能源支出也跟著升高。','比較收入與原料、能源成本，再安排人手和資金。'],
+  logistics:['車隊等著發車，每趟運送都消耗人力與燃料。','留意能源成本，決定要增員、裁員或借款周轉。'],
+  property:['買方還在看屋，利息和案場支出卻已照常到期。','先看現金與利息成本，再謹慎調整人手和借款。'],
+  agriculture:['清晨的貨車已出發，原料與運輸漲價會吃掉每箱食品的利潤。','比較銷售與原料、能源成本，再決定人手與周轉。'],
+  technology:['產品即將上線，工程師仍在處理最後的問題。','人才是關鍵，也最花錢；聘僱前先看收入與人力成本。']
+};
 const storageKey='economy-board-v1';
 const viewKey='economy-board-view-v1';
 const tabId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;
@@ -444,6 +456,24 @@ function cardCenter(){
   }
   return null;
 }
+function effectiveFedNotice(){
+  if(animation||state.status!=='playing'||state.phase!=='roll'||state.turnIndex!==0)return null;
+  const decision=state.decisions.at(-1);
+  return decision&&['rate','program','rescue','restriction'].includes(decision.kind)&&decision.nextEffectiveRound===state.round?decision:null;
+}
+function fedCenter(decision){
+  if(!decision)return null;
+  const theme=decision.kind==='rate'?decision.delta>0?'tighten':'ease':decision.kind;
+  const icon={tighten:'↗',ease:'↘',program:'✦',rescue:'✚',restriction:'⛨'}[theme];
+  const detail=decision.kind==='rate'?`目前政策利率 ${decimal(state.fedRatePercent,2)}%`:decision.kind==='program'?`${state.monetaryProgram?.type||'貨幣政策'} 已啟動`:decision.kind==='rescue'?'銀行流動性支援已生效':'高風險放款限制已生效';
+  const headline=`聯準會政策更新　✦　${decision.action}　✦　第 ${state.round} 季生效　✦　`;
+  return `<div class="fed-broadcast ${theme}" role="status" aria-live="polite"><div class="fed-broadcast-top"><span class="fed-live-dot"></span><span>FED LIVE · 第 ${state.round} 季</span><span class="fed-live-dot"></span></div><div class="fed-orbit" aria-hidden="true"><span>${icon}</span></div><h3>聯準會政策快報</h3><strong class="fed-action">${h(decision.action)}</strong><div class="fed-marquee" aria-hidden="true"><div class="fed-marquee-track"><span>${h(headline)}</span><span>${h(headline)}</span></div></div><p class="fed-detail">${h(detail)}</p><small>新一季已開始 · 可以啟動拉霸</small></div>`;
+}
+function manageCenter(){
+  if(animation||state.status!=='playing'||state.phase!=='manage'||currentCard())return null;
+  const p=currentPlayer(),r=role(p.roleId),[scene,tip]=manageGuides[p.roleId],f=financials(state,p.roleId),c=state.companies[p.roleId];
+  return `<div class="manage-scene" role="status" style="--manage-accent:${colors[p.color]}"><div class="manage-label">第 ${state.round} 季 · ${h(p.name)} 的經營時間</div><div class="manage-icon" aria-hidden="true">${r.icon}</div><h3>${h(r.name)}</h3><p class="manage-story">${h(scene)}</p><p class="manage-tip"><strong>本回合怎麼做</strong>${h(tip)}</p><div class="manage-stats"><div><span>預估淨利</span><strong class="${f.profit<0?'negative':''}">${signed(f.profit)}</strong></div><div><span>目前現金</span><strong>${money(c.cash)}</strong></div></div><small>請在右側調整員工、借貸，完成後交給下一位玩家。</small></div>`;
+}
 function slotMarkup(values){
   return `<div class="slot-machine" role="group" aria-label="兩個 0 到 6 的拉霸轉輪">${values.map((value,i)=>{
     const position=animation?.reelPositions?.[i]??value;
@@ -462,7 +492,8 @@ function renderBoard(){
   const values=animation?.displayReels||(state.reels?.length===2?state.reels:[0,0]);
   const slotDisplay=legacyRoll?`<div class="legacy-roll">舊回合點數<br><strong>${state.reels.join(' + ')} = ${state.dice}</strong></div>`:slotMarkup(values);
   const total=animation?.stage==='rolling'?'數字跳動中…':state.dice===null?'啟動拉霸前進':state.dice===0?'原地停留':`前進 ${state.dice} 格`;
-  $('#board').innerHTML=tiles+`<div class="board-center">${cardCenter()||`<div class="center-icon">⌁</div><h3>市場正在運轉</h3><p>兩輪拉霸 · 逐格前進 · 每季結算</p>${slotDisplay}<div class="slot-total">${total}</div><small>${animation?.stage==='rolling'?'兩個數字依序停下':animation?.stage==='result'?'結果已出現，稍後開始移動':state.dice===0?'本次停留原地，不抽事件卡':animation?.stage==='moving'?'棋子每秒前進一格':'經過起點可獲得 250 遊戲幣'}</small>`}</div>`;
+  const notice=fedCenter(effectiveFedNotice()),card=cardCenter(),manage=manageCenter();
+  $('#board').innerHTML=tiles+`<div class="board-center ${notice?'fed-live':''} ${manage?'manage-mode':''}">${card||notice||manage||`<div class="center-icon">⌁</div><h3>市場正在運轉</h3><p>兩輪拉霸 · 逐格前進 · 每季結算</p>${slotDisplay}<div class="slot-total">${total}</div><small>${animation?.stage==='rolling'?'兩個數字依序停下':animation?.stage==='result'?'結果已出現，稍後開始移動':state.dice===0?'本次停留原地，不抽事件卡':animation?.stage==='moving'?'棋子每秒前進一格':'經過起點可獲得 250 遊戲幣'}</small>`}</div>`;
 }
 function actionRow(id,buttons,min=1){return `<div class="action-row"><input id="${id}" type="number" min="${min}" step="1" value="${id==='staff-count'?10:100}" aria-label="${id==='staff-count'?'人數':'金額'}">${buttons.map(([label,action])=>`<button type="button" data-action="${action}">${label}</button>`).join('')}</div>`}
 function renderTurn(){
