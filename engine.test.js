@@ -6,6 +6,13 @@ import {createGame,financials,assetValue,effectBreakdown,makeSnapshot,evaluateFe
 const game=()=>createGame({players:[{name:'甲',roleId:'auto'},{name:'乙',roleId:'technology'}],seed:42});
 const active=(eventId,scope='global',extra={})=>({instanceId:1,eventId,scope,ownerId:null,sector:null,startedRound:1,...extra});
 
+test('新對局預設以建立時間作為亂數種子',()=>{
+  const before=Date.now();
+  const state=createGame({players:[{name:'甲',roleId:'auto'},{name:'乙',roleId:'technology'}]});
+  const after=Date.now();
+  assert.ok(state.seed>=before&&state.seed<=after);
+  assert.equal(state.rng,state.seed|0||1);
+});
 test('十種企業、十張全球卡、十條規則及基準淨利符合規格',()=>{
   assert.equal(ROLES.length,10);assert.equal(GLOBAL_EVENTS.length,10);assert.equal(FED_RULES.length,10);
   assert.deepEqual(ROLES.map(r=>Math.round(Object.values(r.base).reduce((a,b)=>a+b,0))),[200,230,50,420,440,160,165,330,65,315]);

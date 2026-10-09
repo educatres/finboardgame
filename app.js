@@ -26,7 +26,7 @@ const tabId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;
 let channel=null;
 try{if('BroadcastChannel' in globalThis)channel=new BroadcastChannel(storageKey)}catch{}
 let state=null,page='home',tab='business',snapshotSelection='latest',setupPlayers=[{name:'玩家 1',roleId:'auto'},{name:'玩家 2',roleId:'electronics'}],toastTimer,resetAt=0;
-let animation=null,animationSerial=0;
+let animation=null,animationSerial=0,diceShuffleTimer=null;
 let dismissedCardKey=null;
 const MOVE_MS=1000;
 try{const view=JSON.parse(sessionStorage.getItem(viewKey));if(['business','events','dashboard','fed','history'].includes(view?.tab))tab=view.tab;if(typeof view?.snapshotSelection==='string')snapshotSelection=view.snapshotSelection}catch{}
@@ -36,7 +36,7 @@ function notify(message){const el=$('#toast');el.textContent=message;el.classLis
 function newGameId(){return globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`}
 function prepareNewSession(game){const previous=syncInfo(state);game.sync={gameId:newGameId(),revision:0,updatedAt:Math.max(Date.now(),(previous?.updatedAt||0)+1,resetAt+1),writerId:tabId}}
 function readStored(){try{const raw=localStorage.getItem(storageKey);return raw?importGame(raw):null}catch{return undefined}}
-function cancelAnimation(){animationSerial++;animation=null}
+function cancelAnimation(){animationSerial++;animation=null;clearInterval(diceShuffleTimer);diceShuffleTimer=null}
 function save(){
   if(!state)return;
   if(!state.sync)prepareNewSession(state);
@@ -120,14 +120,27 @@ function cardCenter(){
   return null;
 }
 const pipPositions={1:[5],2:[1,9],3:[1,5,9],4:[1,3,7,9],5:[1,3,5,7,9],6:[1,3,4,6,7,9]};
+function diceFaceValues(value){
+  const remaining=[1,2,3,4,5,6].filter(n=>n!==value&&n!==7-value),right=remaining[0],top=remaining.find(n=>n!==right&&n!==7-right);
+  return [value,right,top,7-top,7-right,7-value];
+}
 function diceFaceMarkup(face,value){
   return `<span class="die-face face-${face}">${Array.from({length:9},(_,i)=>`<i class="${pipPositions[value].includes(i+1)?'pip':''}"></i>`).join('')}</span>`;
 }
 function diceMarkup(values){
-  return `<div class="dice-table" role="group" aria-label="兩顆六面骰子">${values.map((value,i)=>{const remaining=[1,2,3,4,5,6].filter(n=>n!==value&&n!==7-value),right=remaining[0],top=remaining.find(n=>n!==right&&n!==7-right);const faces=[value,right,top,7-top,7-right,7-value];return `<div class="die-travel" aria-label="第 ${i+1} 顆骰子：${value} 點"><div class="die-cube" style="transform:${diceOrientation()}">${faces.map((dots,face)=>diceFaceMarkup(face+1,dots)).join('')}</div><span class="die-shadow"></span></div>`}).join('')}</div>`;
+  return `<div class="dice-table" role="group" aria-label="兩顆六面骰子">${values.map((value,i)=>`<div class="die-travel" data-face-value="${value}" aria-label="第 ${i+1} 顆骰子：${value} 點"><div class="die-cube" style="transform:${diceOrientation()}">${diceFaceValues(value).map((dots,face)=>diceFaceMarkup(face+1,dots)).join('')}</div><span class="die-shadow"></span></div>`).join('')}</div>`;
 }
 function diceOrientation(){
-  return 'rotateX(-24deg) rotateY(-24deg)';
+  return 'rotateX(-30deg) rotateY(-32deg)';
+}
+function setDiePips(travel,value,index){
+  travel.dataset.faceValue=String(value);
+  travel.setAttribute('aria-label',`第 ${index+1} 顆骰子：${value} 點`);
+  const values=diceFaceValues(value);
+  travel.querySelectorAll('.die-face').forEach((face,faceIndex)=>{
+    const dots=pipPositions[values[faceIndex]];
+    face.querySelectorAll('i').forEach((pip,pipIndex)=>pip.classList.toggle('pip',dots.includes(pipIndex+1)));
+  });
 }
 function renderBoard(){
   const pos=state.players.map(p=>({p,index:animation?.playerId===p.id?animation.position:p.position}));
@@ -287,9 +300,21 @@ function beginRollAnimation({playerId,from,dice,reels}){
   animation={playerId,position:from,dice,reels:finalReels,visited:new Set(),stage:'rolling'};
   renderBoard();renderTurn();
   animateDiceOnTable();
+  diceShuffleTimer=setInterval(()=>{
+    if(serial!==animationSerial)return;
+    const current=[];
+    document.querySelectorAll('#board .die-travel').forEach((travel,i)=>{
+      const previous=Number(travel.dataset.faceValue)||1;
+      const value=(previous+Math.floor(Math.random()*5))%6+1;
+      setDiePips(travel,value,i);
+      current.push(value);
+    });
+    if(current.length===2){const label=$('#board .dice-total');if(label)label.textContent=`點數跳動：${current.join(' + ')}`}
+  },260);
   void (async()=>{
     await pause(2500);
     if(serial!==animationSerial)return;
+    clearInterval(diceShuffleTimer);diceShuffleTimer=null;
     animation.stage='result';renderBoard();renderTurn();
     await pause(1000);
     if(serial!==animationSerial)return;
@@ -321,7 +346,7 @@ $('#add-player').addEventListener('click',()=>{if(setupPlayers.length<4){const u
 $('#setup-players').addEventListener('input',e=>{if(e.target.dataset.setupName!==undefined)setupPlayers[Number(e.target.dataset.setupName)].name=e.target.value});
 $('#setup-players').addEventListener('change',e=>{if(e.target.dataset.setupRole!==undefined)setupPlayers[Number(e.target.dataset.setupRole)].roleId=e.target.value});
 $('#setup-players').addEventListener('click',e=>{const i=e.target.dataset.removePlayer;if(i!==undefined&&setupPlayers.length>2){setupPlayers.splice(Number(i),1);renderSetup()}});
-$('#start-btn').addEventListener('click',async()=>{try{await withGameLock(()=>{const saved=readStored();if(saved){adoptShared(saved);notify('已加入另一個頁籤的對局。');return}const next=createGame({players:setupPlayers,seed:$('#seed-input').value,targetWealth:$('#target-input').value,maxRounds:$('#rounds-input').value});prepareNewSession(next);state=next;page='game';$('#setup-error').textContent='';tab='business';snapshotSelection='preview';rememberView();save();render()})}catch(e){$('#setup-error').textContent=e.message}});
+$('#start-btn').addEventListener('click',async()=>{try{await withGameLock(()=>{const saved=readStored();if(saved){adoptShared(saved);notify('已加入另一個頁籤的對局。');return}const next=createGame({players:setupPlayers,targetWealth:$('#target-input').value,maxRounds:$('#rounds-input').value});prepareNewSession(next);state=next;page='game';$('#setup-error').textContent='';tab='business';snapshotSelection='preview';rememberView();save();render()})}catch(e){$('#setup-error').textContent=e.message}});
 $('.tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(!b)return;tab=b.dataset.tab;rememberView();render();window.scrollTo({top:0,behavior:'smooth'})});
 $('#snapshot-select').addEventListener('change',e=>{snapshotSelection=e.target.value;rememberView();renderDashboard()});
 $('#game').addEventListener('click',e=>{
