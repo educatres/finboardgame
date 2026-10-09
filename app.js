@@ -190,7 +190,7 @@ function moveTokenStep(position){
 }
 function beginRollAnimation({playerId,from,dice,reels},showDraw=false,draw=null){
   if(!state||state.players[state.turnIndex]?.id!==playerId||state.dice!==dice)return;
-  if(document.hidden||tab!=='business'||window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches){if(showDraw&&tab==='business')showCard(draw);return}
+  if(document.hidden||tab!=='business'){if(showDraw&&tab==='business')showCard(draw);return}
   cancelAnimation();
   const serial=animationSerial;
   const finalReels=Array.isArray(reels)&&reels.length===3?reels:[0,0,0];
