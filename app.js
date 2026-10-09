@@ -33,6 +33,18 @@ const manageGuides={
   agriculture:['清晨的貨車已出發，原料與運輸漲價會吃掉每箱食品的利潤。','比較銷售與原料、能源成本，再決定人手與周轉。'],
   technology:['產品即將上線，工程師仍在處理最後的問題。','人才是關鍵，也最花錢；聘僱前先看收入與人力成本。']
 };
+const strikeStories={
+  auto:['警報聲壓過沖壓機，整條產線突然停住。交車期限還在倒數，工資、廠房與原料帳單卻一張張送來。','車子一台也交不出去；守住現金，等下一回合重新開線。'],
+  electronics:['無塵室外擠滿停工的人，出貨倒數歸零。晶片還鎖在產線裡，海外客戶的電話已經響個不停。','訂單收入歸零，零件、關稅與薪資照付；這回合只能看著貨櫃空等。'],
+  retail:['開門前，員工把百貨大門拉下。顧客聚在門外，收銀機整天沒響，租金和備貨款卻準時到期。','沒有一筆成交，商品與人力成本仍在；先撐過這場停業。'],
+  bank:['櫃檯一夜之間空了，提款人潮排到街角。放款與利息收入停擺，維持分行運作的費用仍不停流出。','收入歸零，壞帳與營運壓力還在；這回合無法調整放款與人手。'],
+  investment:['開盤鐘響，交易室卻只剩閃爍的螢幕。分析師集體離席，機會從眼前滑過，辦公室帳單照常入帳。','投資與交易收入歸零，固定支出繼續扣；下一回合再追市場。'],
+  energy:['調度中心的對講機突然沉默，機組停在半途。需求仍在飆升，原料、設備與能源費卻沒有跟著停。','供應收入歸零，原料與維護照付；先把資金撐到下一班。'],
+  logistics:['司機把車鑰匙整排放在桌上，貨車堵滿月台。客戶催貨的訊息狂跳，油費、倉租與薪資仍持續累積。','一趟貨也送不出去，運輸成本照算；這回合只能停車等候。'],
+  property:['工地吊臂停在半空，銷售中心也熄了燈。買方等著交屋，貸款利息和案場費用卻分秒不停。','成交收入歸零，利息與固定支出照付；等復工再推進案子。'],
+  agriculture:['包裝線突然停轉，剛採下的作物堆在冷藏庫門口。通路催著上架，冷鏈和原料費每分鐘都在燒。','食品賣不出去，保存與運輸成本照付；先撐住這批貨。'],
+  technology:['上線倒數最後一刻，工程師關上筆電離開。客戶仍盯著進度條，伺服器和人力帳單卻不會暫停。','服務收入歸零，維運與薪資照付；這回合無法再做經營調整。']
+};
 const storageKey='economy-board-v1';
 const viewKey='economy-board-view-v1';
 const tabId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random()}`;
@@ -68,7 +80,7 @@ function clearSave(){
 function adoptShared(incoming){
   if(!isNewerGame(incoming,state))return false;
   const previous=state;
-  const sharedRoll=previous&&syncInfo(previous).gameId===syncInfo(incoming).gameId&&previous.round===incoming.round&&previous.phase==='roll'&&['draw','manage'].includes(incoming.phase)&&previous.turnIndex===incoming.turnIndex&&Number.isInteger(incoming.dice);
+  const sharedRoll=previous&&syncInfo(previous).gameId===syncInfo(incoming).gameId&&previous.round===incoming.round&&previous.phase==='roll'&&['draw','manage','strike'].includes(incoming.phase)&&previous.turnIndex===incoming.turnIndex&&Number.isInteger(incoming.dice);
   const from=sharedRoll?previous.players[previous.turnIndex].position:null;
   cancelAnimation();state=incoming;render();
   $('#save-status').textContent='已從其他頁籤同步';
@@ -153,6 +165,11 @@ function manageCenter(){
   const p=currentPlayer(),r=role(p.roleId),[scene,tip]=manageGuides[p.roleId],f=financials(state,p.roleId),c=state.companies[p.roleId];
   return `<div class="manage-scene" role="status" style="--manage-accent:${colors[p.color]}"><div class="manage-label">第 ${state.round} 季 · ${h(p.name)} 的經營時間</div><div class="manage-icon" aria-hidden="true">${r.icon}</div><h3>${h(r.name)}</h3><p class="manage-story">${h(scene)}</p><p class="manage-tip"><strong>本回合怎麼做</strong>${h(tip)}</p><div class="manage-stats"><div><span>預估淨利</span><strong class="${f.profit<0?'negative':''}">${signed(f.profit)}</strong></div><div><span>目前現金</span><strong>${money(c.cash)}</strong></div></div><small>請在右側調整員工、借貸，完成後交給下一位玩家。</small></div>`;
 }
+function strikeCenter(){
+  if(animation||state.status!=='playing'||state.phase!=='strike')return null;
+  const p=currentPlayer(),r=role(p.roleId),[scene]=strikeStories[p.roleId],f=financials(state,p.roleId);
+  return `<div class="strike-scene" role="status" aria-live="polite"><span class="strike-siren">罷工警報 · 第 ${state.round} 季</span><span class="strike-ghost" aria-hidden="true">👻</span><h3>${h(r.name)}全面停工</h3><p>${h(scene)}</p><div class="strike-effects"><span>本季收入 <strong>0</strong></span><span>支出照付 <strong>${money(-f.costs)}</strong></span></div><small>本回合不能抽事件卡，也不能聘僱、裁員或借貸。</small></div>`;
+}
 function slotMarkup(values){
   return `<div class="slot-machine" role="group" aria-label="兩個 0 到 6 的拉霸轉輪">${values.map((value,i)=>{
     const position=animation?.reelPositions?.[i]??value;
@@ -166,14 +183,33 @@ function renderBoard(){
     const [row,col]=boardCoords(i);
     const occupants=pos.filter(x=>x.index===i);
     const tokens=occupants.map(x=>`<span class="token ${animation?.playerId===x.p.id?'moving':''}" title="${h(x.p.name)}" style="background:${colors[x.p.color]}"></span>`).join('');
-    return `<div class="tile ${tile.type} ${occupants.length>4?'crowded':''} ${animation?.position===i?'tile-active':''} ${animation?.visited.has(i)?'tile-visited':''}" data-tile-index="${i}" style="grid-row:${row};grid-column:${col}" title="${h(tileName(tile,i))}"><span class="tile-number">${String(i).padStart(2,'0')}</span><span class="tile-type">${h(tileName(tile,i))}</span><span class="tile-icon">${tile.type==='global'?'◎':tile.type==='personal'?'◇':tile.type==='sector'?'▦':'↗'}</span><div class="tile-tokens">${tokens}</div></div>`;
+    return `<div class="tile ${tile.type} ${occupants.length>4?'crowded':''} ${state.ghostPosition===i?'ghost-tile':''} ${animation?.position===i?'tile-active':''} ${animation?.visited.has(i)?'tile-visited':''}" data-tile-index="${i}" style="grid-row:${row};grid-column:${col}" title="${h(tileName(tile,i))}"><span class="tile-number">${String(i).padStart(2,'0')}</span><span class="tile-type">${h(tileName(tile,i))}</span><span class="tile-icon">${tile.type==='global'?'◎':tile.type==='personal'?'◇':tile.type==='sector'?'▦':'↗'}</span><div class="tile-tokens">${tokens}</div></div>`;
   }).join('');
   const legacyRoll=state.dice!==null&&state.reels?.length===3&&!animation;
   const values=animation?.displayReels||(state.reels?.length===2?state.reels:[0,0]);
   const slotDisplay=legacyRoll?`<div class="legacy-roll">舊回合點數<br><strong>${state.reels.join(' + ')} = ${state.dice}</strong></div>`:slotMarkup(values);
   const total=animation?.stage==='rolling'?'數字跳動中…':state.dice===null?'啟動拉霸前進':state.dice===0?'原地停留':`前進 ${state.dice} 格`;
-  const notice=fedCenter(effectiveFedNotice()),card=cardCenter(),manage=manageCenter();
-  $('#board').innerHTML=tiles+`<div class="board-center ${notice?'fed-live':''} ${manage?'manage-mode':''}">${card||notice||manage||`<div class="center-icon">⌁</div><h3>市場正在運轉</h3><p>兩輪拉霸 · 逐格前進 · 每季結算</p>${slotDisplay}<div class="slot-total">${total}</div><small>${animation?.stage==='rolling'?'兩個數字依序停下':animation?.stage==='result'?'結果已出現，稍後開始移動':state.dice===0?'本次停留原地，不抽事件卡':animation?.stage==='moving'?'棋子每秒前進一格':'經過起點可獲得 250 遊戲幣'}</small>`}</div>`;
+  const notice=fedCenter(effectiveFedNotice()),card=cardCenter(),manage=manageCenter(),strike=strikeCenter();
+  const board=$('#board'),ghost=board.querySelector('.ghost-piece'),oldPosition=ghost?.dataset.position,oldRect=ghost?.getBoundingClientRect();
+  ghost?.remove();
+  board.innerHTML=tiles+`<div class="board-center ${notice?'fed-live':''} ${manage?'manage-mode':''} ${strike?'strike-mode':''}">${card||notice||manage||strike||`<div class="center-icon">⌁</div><h3>市場正在運轉</h3><p>兩輪拉霸 · 逐格前進 · 每季結算</p>${slotDisplay}<div class="slot-total">${total}</div><small>${animation?.stage==='rolling'?'兩個數字依序停下':animation?.stage==='result'?'結果已出現，稍後開始移動':state.dice===0?'本次停留原地，不抽事件卡':animation?.stage==='moving'?'棋子每秒前進一格':'經過起點可獲得 250 遊戲幣'}</small>`}</div>`;
+  const piece=ghost||document.createElement('span');
+  if(!ghost){piece.className='ghost-piece';piece.innerHTML='<span aria-hidden="true">👻</span>';piece.setAttribute('role','img')}
+  piece.dataset.position=String(state.ghostPosition);
+  piece.setAttribute('aria-label',`罷工幽靈位於第 ${state.ghostPosition} 格`);
+  board.appendChild(piece);
+  const tile=board.querySelector(`[data-tile-index="${state.ghostPosition}"]`),tileRect=tile.getBoundingClientRect(),boardRect=board.getBoundingClientRect();
+  piece.style.left=`${tileRect.left-boardRect.left+tileRect.width*.72}px`;
+  piece.style.top=`${tileRect.top-boardRect.top+tileRect.height*.38}px`;
+  if(oldRect?.width&&boardRect.width&&oldPosition!==piece.dataset.position&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
+    const trail=state.ghostTrail?.[0]===Number(oldPosition)&&state.ghostTrail.at(-1)===state.ghostPosition?state.ghostTrail:null;
+    const frames=trail?.map((position,i)=>{
+      const r=board.querySelector(`[data-tile-index="${position}"]`).getBoundingClientRect();
+      const dx=r.left-tileRect.left+(r.width-tileRect.width)*.72,dy=r.top-tileRect.top+(r.height-tileRect.height)*.38;
+      return {transform:`translate(${dx}px,${dy}px) translate(-50%,-50%)`,offset:i/(trail.length-1)};
+    })||[{transform:`translate(${oldRect.left-piece.getBoundingClientRect().left}px,${oldRect.top-piece.getBoundingClientRect().top}px) translate(-50%,-50%)`},{transform:'translate(-50%,-50%)'}];
+    piece.animate(frames,{duration:trail?(trail.length-1)*360:850,easing:'ease-in-out'});
+  }
 }
 function actionRow(id,buttons,min=1){return `<div class="action-row"><input id="${id}" type="number" min="${min}" step="1" value="${id==='staff-count'?10:100}" aria-label="${id==='staff-count'?'人數':'金額'}">${buttons.map(([label,action])=>`<button type="button" data-action="${action}">${label}</button>`).join('')}</div>`}
 function renderTurn(){
@@ -183,6 +219,11 @@ function renderTurn(){
     const winners=state.players.filter(x=>state.winnerIds.includes(x.id)).map(x=>x.name).join('、');
     const cause=state.status==='bankruptcy'?'有玩家破產':state.status==='goal'?'有人達成淨資產目標':'到達季數上限';
     $('#turn-content').innerHTML=`<h2 class="turn-name">對局結束</h2><p class="turn-role">${cause}</p><p class="turn-meta">勝出：<strong>${h(winners||'無')}</strong></p><button class="secondary" data-action="new-game">再玩一局</button>`;
+    return;
+  }
+  if(state.phase==='strike'){
+    const [,tip]=strikeStories[p.roleId],f=financials(state,p.roleId);
+    $('#turn-content').innerHTML=`<h2 class="turn-name strike-turn-name">${h(p.name)} 遇上罷工</h2><p class="turn-role">${h(r.name)} · ${h(r.sector)}</p><div class="turn-steps"><span class="done"></span><span class="done"></span><span></span></div><p class="turn-meta">拉出 ${state.dice} 格，走到第 ${p.position} 格時被幽靈攔下，剩餘步數作廢。</p><p class="turn-meta strike-turn-copy">${h(tip)}</p><div class="strike-turn-effect"><strong>收入歸零</strong><span>本季支出仍有 ${money(-f.costs)} 遊戲幣</span></div><p class="turn-meta">這回合不能抽事件卡，也無法聘僱、裁員或借貸。</p><button class="primary" data-action="end-turn">${state.turnIndex===state.players.length-1?'停工結算本季 →':'停工，交給下一位 →'}</button>`;
     return;
   }
   if(state.phase==='draw'||currentCard()){
@@ -293,13 +334,15 @@ function moveTokenStep(position){
     token.style.transform='translate(0,0)';
   });
 }
-function beginRollAnimation({playerId,from,dice,reels}){
+function beginRollAnimation({playerId,from,dice,reels,path}){
   if(!state||state.players[state.turnIndex]?.id!==playerId||state.dice!==dice)return;
   if(document.hidden||tab!=='business'||page!=='game')return;
   cancelAnimation();
   const serial=animationSerial;
   const finalReels=Array.isArray(reels)&&reels.length===2?reels:[0,0];
-  animation={playerId,position:from,dice,reels:finalReels,displayReels:[0,0],reelPositions:[0,0],spinning:[true,true],visited:new Set(),stage:'rolling'};
+  const fullRoute=path||movementPath(from,dice),ghostStep=state.phase==='strike'?fullRoute.indexOf(state.ghostPosition):-1;
+  const route=ghostStep>=0?fullRoute.slice(0,ghostStep+1):fullRoute;
+  animation={playerId,position:from,dice,reels:finalReels,path:route,displayReels:[0,0],reelPositions:[0,0],spinning:[true,true],visited:new Set(),stage:'rolling'};
   renderBoard();renderTurn();
   void (async()=>{
     const stopTicks=[10,17];
@@ -328,7 +371,7 @@ function beginRollAnimation({playerId,from,dice,reels}){
     await pause(1000);
     if(serial!==animationSerial)return;
     animation.stage='moving';renderBoard();renderTurn();
-    for(const position of movementPath(from,dice)){
+    for(const position of animation.path){
       if(serial!==animationSerial)return;
       animation.position=position;moveTokenStep(position);
       await pause(MOVE_MS);
@@ -347,7 +390,7 @@ async function rollWithAnimation(){
       const player=currentPlayer();from=player.position;playerId=player.id;
       result=rollDice(state);save();render();
     });
-    if(result)beginRollAnimation({playerId,from,dice:result.dice,reels:result.reels});
+    if(result)beginRollAnimation({playerId,from,dice:result.dice,reels:result.reels,path:result.path});
   }catch(e){notify(e.message||'無法啟動拉霸')}
 }
 

@@ -7,6 +7,20 @@ const pct=(a,b)=>{const x=div(a,b);return x===null?null:100*(x-1)};
 const roleById=id=>ROLES.find(r=>r.id===id);
 const eventById=id=>ALL_EVENTS.find(e=>e.id===id);
 const nextRandom=state=>{let x=state.rng|0;x^=x<<13;x^=x>>>17;x^=x<<5;state.rng=x|0;return (x>>>0)/4294967296};
+const ghostSeed=seed=>((Number(seed)|0)^0x6d2b79f5)||1;
+const nextGhostRandom=state=>{let x=state.ghostRng|0;x^=x<<13;x^=x>>>17;x^=x<<5;state.ghostRng=x|0;return (x>>>0)/4294967296};
+function ensureGhostState(state){
+  if(!Number.isInteger(state.ghostRng)||state.ghostRng===0)state.ghostRng=ghostSeed(state.seed);
+  if(!Number.isInteger(state.ghostPosition)||state.ghostPosition<0||state.ghostPosition>=BOARD.length)state.ghostPosition=1+Math.floor(nextGhostRandom(state)*(BOARD.length-1));
+  if(!Array.isArray(state.ghostTrail))state.ghostTrail=[];
+  if(!Array.isArray(state.struckPlayerIds))state.struckPlayerIds=[];
+}
+function moveGhost(state){
+  const steps=1+Math.floor(nextGhostRandom(state)*3),direction=nextGhostRandom(state)<.5?-1:1;
+  const from=state.ghostPosition;
+  state.ghostTrail=[from,...Array.from({length:steps},(_,i)=>(from+direction*(i+1)+BOARD.length)%BOARD.length)];
+  state.ghostPosition=state.ghostTrail.at(-1);
+}
 const pick=(state,items)=>items[Math.floor(nextRandom(state)*items.length)];
 const hasTarget=(effect,role)=>effect.target==='all'||effect.target==='interest_negative'&&role.base.interest<0||effect.target==='except_technology'&&role.id!=='technology'||effect.target.split(',').includes(role.id);
 const eventAffects=(active,role,state)=>active.scope==='global'||active.scope==='sector'&&active.sector===role.sector||active.scope==='personal'&&state.players.some(p=>p.id===active.ownerId&&p.roleId===role.id);
@@ -35,6 +49,8 @@ export function financials(state,roleId,round=state.round){
     const headFactor=m==='labor'?c.headcount/role.baseHeadcount:1;
     flows[m]=round2(Math.sign(base)*Math.abs(base)*headFactor*Math.max(0,1+clamp(metricPct(state,roleId,m,round)+extra,-60,100)/100));
   }
+  const ownerId=state.players.find(p=>p.roleId===roleId)?.id;
+  if(round===state.round&&state.struckPlayerIds?.includes(ownerId))for(const m of METRICS)if(flows[m]>0)flows[m]=0;
   const revenue=flows.revenue,costs=Object.entries(flows).filter(([m,v])=>m!=='revenue'&&v<0).reduce((s,[,v])=>s+v,0),otherIncome=Object.entries(flows).filter(([m,v])=>m!=='revenue'&&v>0).reduce((s,[,v])=>s+v,0);
   return {flows,revenue,costs:round2(costs),otherIncome:round2(otherIncome),profit:round2(Object.values(flows).reduce((s,v)=>s+v,0)),assetValue:assetValue(state,roleId,round)};
 }
@@ -47,7 +63,9 @@ export function createGame({players,seed=Date.now(),targetWealth=5500,maxRounds=
   if(names.some(n=>!n)||new Set(names).size!==names.length)throw Error('玩家名稱不得空白或重複。');
   const n=Number(seed),goal=Number(targetWealth),limit=Number(maxRounds);
   if(!Number.isInteger(n)||!Number.isFinite(goal)||goal<2000||!Number.isInteger(limit)||limit<2||limit>50)throw Error('種子、目標或回合上限無效。');
-  return {version:1,round:1,turnIndex:0,phase:'roll',rng:n|0||1,seed:n,players:players.map((p,i)=>({id:`player-${i+1}`,name:names[i],roleId:p.roleId,position:0,color:i})),companies:Object.fromEntries(ROLES.map(r=>[r.id,{cash:1200,assetReferenceValue:800,headcount:r.baseHeadcount,debt:0}])),activeEvents:[],eventSerial:0,bank:{liquidAssets:300,shortTermLiabilities:1000,totalLoans:1000,nonperformingLoans:40,rescues:[],riskRestrictionUntil:0},initialStockIndex:100,initialTotalLoans:1000,fedRatePercent:4,lastRateDecisionRound:null,monetaryProgram:null,economicHistory:[],evaluations:[],decisions:[],log:[],dice:null,reels:null,lastDraw:null,targetWealth:goal,maxRounds:limit,status:'playing',winnerIds:[]};
+  const state={version:1,round:1,turnIndex:0,phase:'roll',rng:n|0||1,seed:n,players:players.map((p,i)=>({id:`player-${i+1}`,name:names[i],roleId:p.roleId,position:0,color:i})),companies:Object.fromEntries(ROLES.map(r=>[r.id,{cash:1200,assetReferenceValue:800,headcount:r.baseHeadcount,debt:0}])),activeEvents:[],eventSerial:0,bank:{liquidAssets:300,shortTermLiabilities:1000,totalLoans:1000,nonperformingLoans:40,rescues:[],riskRestrictionUntil:0},initialStockIndex:100,initialTotalLoans:1000,fedRatePercent:4,lastRateDecisionRound:null,monetaryProgram:null,economicHistory:[],evaluations:[],decisions:[],log:[],dice:null,reels:null,lastDraw:null,targetWealth:goal,maxRounds:limit,status:'playing',winnerIds:[]};
+  ensureGhostState(state);
+  return state;
 }
 
 export function drawForTile(state,tile,ownerId){
@@ -75,15 +93,18 @@ export function rollDice(state,forced){
   const player=state.players[state.turnIndex];
   const reels=forced??Array.from({length:2},()=>Math.floor(nextRandom(state)*7));
   if(!Array.isArray(reels)||reels.length!==2||reels.some(n=>!Number.isInteger(n)||n<0||n>6))throw Error('拉霸須有兩個 0–6 的數字。');
-  const dice=reels.reduce((sum,n)=>sum+n,0),old=player.position,path=movementPath(old,dice);
+  const dice=reels.reduce((sum,n)=>sum+n,0),old=player.position,fullPath=movementPath(old,dice);
+  const ghostStep=fullPath.indexOf(state.ghostPosition),struck=ghostStep!==-1;
+  const path=struck?fullPath.slice(0,ghostStep+1):fullPath;
   player.position=path.at(-1)??old;
   state.lastDraw=null;
-  state.log.unshift(`${player.name}拉出 ${reels.join(' + ')} = ${dice}，${dice===0?'停留原地':`前進 ${dice} 格`}。`);
-  if(old+dice>=BOARD.length){state.companies[player.roleId].cash+=250;state.log.unshift(`${player.name}經過起點，獲得 250 遊戲幣。`)}
+  state.log.unshift(`${player.name}拉出 ${reels.join(' + ')} = ${dice}，${dice===0?'停留原地':struck?`原預計前進 ${dice} 格，遇罷工實際前進 ${path.length} 格`:`前進 ${dice} 格`}。`);
+  if(struck){state.struckPlayerIds.push(player.id);state.log.unshift(`${player.name}走到第 ${player.position} 格撞上罷工幽靈！剩餘步數作廢，本季收入歸零、支出照付，失去這次經營與抽卡機會。`)}
+  if(old+dice>=BOARD.length&&!struck){state.companies[player.roleId].cash+=250;state.log.unshift(`${player.name}經過起點，獲得 250 遊戲幣。`)}
   state.dice=dice;state.reels=[...reels];
   const tile=BOARD[player.position];
-  state.phase=dice>0&&tile.type!=='start'?'draw':'manage';
-  return {dice,reels:[...reels],tile,path,from:old};
+  state.phase=struck?'strike':dice>0&&tile.type!=='start'?'draw':'manage';
+  return {dice,reels:[...reels],tile,path,from:old,struck};
 }
 export function drawEvent(state){
   if(state.status!=='playing'||state.phase!=='draw')throw Error('現在不需要抽卡。');
@@ -200,7 +221,8 @@ function applyDecision(state,decision){
   if(decision.kind!=='none')state.log.unshift(`第 ${state.round} 季生效｜聯準會 ${decision.action}。`);
 }
 export function endTurn(state){
-  if(state.status!=='playing'||state.phase!=='manage')throw Error('請先啟動拉霸並抽卡。');
+  if(state.status!=='playing'||!['manage','strike'].includes(state.phase))throw Error('請先完成本回合。');
+  moveGhost(state);
   if(state.turnIndex<state.players.length-1){state.turnIndex++;state.phase='roll';state.dice=null;state.reels=null;state.lastDraw=null;return null}
   const result=settleSeason(state);return result;
 }
@@ -223,6 +245,7 @@ export function settleSeason(state){
     state.phase='finished';return {snapshot,decision,finished:true};
   }
   state.round++;
+  state.struckPlayerIds=[];
   state.activeEvents=state.activeEvents.filter(a=>eventRemaining(a,state.round)>0);
   state.monetaryProgram=state.monetaryProgram&&state.round<state.monetaryProgram.startRound+2?state.monetaryProgram:null;
   for(const rescue of [...state.bank.rescues])if(rescue.dueRound<=state.round&&state.bank.liquidAssets>=rescue.amount){state.bank.liquidAssets-=rescue.amount;state.bank.shortTermLiabilities-=rescue.amount;state.bank.rescues.splice(state.bank.rescues.indexOf(rescue),1);state.log.unshift(`第 ${state.round} 季｜銀行償還緊急融資 ${rescue.amount}。`)}
@@ -235,4 +258,4 @@ export function getEconomicHistory(state,from=1,to=state.round){return state.eco
 export function getFedRuleEvaluations(state,round){return state.evaluations.find(x=>x.round===round)?.items||null}
 export function getFedDecision(state,round){return state.decisions.find(x=>x.round===round)||null}
 export function exportGame(state){return JSON.stringify(state,null,2)}
-export function importGame(json){const s=JSON.parse(json);if(s.version!==1||!Array.isArray(s.players)||!Array.isArray(s.economicHistory)||!s.companies||!s.bank||!Array.isArray(s.activeEvents))throw Error('存檔格式不正確。');return s}
+export function importGame(json){const s=JSON.parse(json);if(s.version!==1||!Array.isArray(s.players)||!Array.isArray(s.economicHistory)||!s.companies||!s.bank||!Array.isArray(s.activeEvents))throw Error('存檔格式不正確。');ensureGhostState(s);return s}

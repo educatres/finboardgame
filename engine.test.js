@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ROLES,GLOBAL_EVENTS,FED_RULES,BOARD} from './data.js';
-import {createGame,financials,assetValue,effectBreakdown,makeSnapshot,evaluateFed,rollDice,drawEvent,movementPath,endTurn,settleSeason,adjustStaff,issueLoan,repayLoan,updateBadLoans} from './engine.js';
+import {createGame,financials,assetValue,effectBreakdown,makeSnapshot,evaluateFed,rollDice,drawEvent,movementPath,endTurn,settleSeason,adjustStaff,issueLoan,repayLoan,updateBadLoans,exportGame,importGame} from './engine.js';
 
 const game=()=>createGame({players:[{name:'甲',roleId:'auto'},{name:'乙',roleId:'technology'}],seed:42});
 const active=(eventId,scope='global',extra={})=>({instanceId:1,eventId,scope,ownerId:null,sector:null,startedRound:1,...extra});
@@ -27,6 +27,41 @@ test('八位玩家都完成回合後才結算，九位玩家無法開局',()=>{
     else{assert.equal(result.finished,false);assert.equal(state.round,2);assert.equal(state.turnIndex,0)}
   }
   assert.throws(()=>createGame({players:[...players,{name:'玩家 9',roleId:ROLES[8].id}]}),/2 至 8 位玩家/);
+});
+test('撞上罷工幽靈時收入歸零、支出照付，停工一回合且不抽卡',()=>{
+  const s=createGame({players:[{name:'甲',roleId:'bank'},{name:'乙',roleId:'technology'}],seed:42,targetWealth:100000});
+  s.ghostPosition=1;
+  const roll=rollDice(s,[0,1]);
+  assert.equal(roll.struck,true);assert.equal(s.phase,'strike');assert.equal(s.lastDraw,null);
+  assert.deepEqual(s.struckPlayerIds,['player-1']);
+  const f=financials(s,'bank');
+  assert.equal(f.revenue,0);assert.equal(f.otherIncome,0);assert.ok(f.costs<0);assert.equal(f.profit,f.costs);
+  assert.throws(()=>drawEvent(s),/不需要抽卡/);
+  assert.throws(()=>adjustStaff(s,'player-1',1),/經營階段/);
+  assert.equal(endTurn(s),null);assert.equal(s.turnIndex,1);assert.notEqual(s.ghostPosition,1);
+  assert.ok(s.ghostTrail.length>=2&&s.ghostTrail.length<=4);
+  assert.equal(s.ghostTrail[0],1);assert.equal(s.ghostTrail.at(-1),s.ghostPosition);
+  for(let i=1;i<s.ghostTrail.length;i++)assert.ok([1,BOARD.length-1].includes((s.ghostTrail[i]-s.ghostTrail[i-1]+BOARD.length)%BOARD.length));
+  rollDice(s,[0,0]);endTurn(s);
+  assert.equal(s.round,2);assert.deepEqual(s.struckPlayerIds,[]);
+  assert.equal(s.companies.bank.cash,1200+f.profit);
+  const crossing=createGame({players:[{name:'甲',roleId:'auto'},{name:'乙',roleId:'bank'}],seed:42});
+  crossing.players[0].position=23;crossing.ghostPosition=0;
+  rollDice(crossing,[0,1]);
+  assert.equal(crossing.phase,'strike');assert.equal(crossing.companies.auto.cash,1200);
+  const passing=game();passing.ghostPosition=2;
+  const interrupted=rollDice(passing,[0,5]);
+  assert.equal(interrupted.dice,5);assert.deepEqual(interrupted.path,[1,2]);
+  assert.equal(passing.players[0].position,2);assert.equal(passing.phase,'strike');
+  assert.match(passing.log[1],/原預計前進 5 格，遇罷工實際前進 2 格/);
+});
+test('舊存檔載入時補上罷工幽靈狀態',()=>{
+  const legacy=JSON.parse(exportGame(game()));
+  delete legacy.ghostPosition;delete legacy.ghostRng;delete legacy.ghostTrail;delete legacy.struckPlayerIds;
+  const restored=importGame(JSON.stringify(legacy));
+  assert.ok(restored.ghostPosition>=1&&restored.ghostPosition<BOARD.length);
+  assert.deepEqual(restored.ghostTrail,[]);
+  assert.deepEqual(restored.struckPlayerIds,[]);
 });
 test('十種企業、十張全球卡、十條規則及基準淨利符合規格',()=>{
   assert.equal(ROLES.length,10);assert.equal(GLOBAL_EVENTS.length,10);assert.equal(FED_RULES.length,10);
