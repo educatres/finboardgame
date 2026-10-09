@@ -82,9 +82,16 @@ export function rollDice(state,forced){
   if(old+dice>=BOARD.length){state.companies[player.roleId].cash+=250;state.log.unshift(`${player.name}經過起點，獲得 250 遊戲幣。`)}
   state.dice=dice;state.reels=[...reels];
   const tile=BOARD[player.position];
-  if(dice>0&&tile.type!=='start')drawForTile(state,tile,player.id);
+  state.phase=dice>0&&tile.type!=='start'?'draw':'manage';
+  return {dice,reels:[...reels],tile,path,from:old};
+}
+export function drawEvent(state){
+  if(state.status!=='playing'||state.phase!=='draw')throw Error('現在不需要抽卡。');
+  const player=state.players[state.turnIndex],tile=BOARD[player.position];
+  if(!state.dice||tile.type==='start')throw Error('目前停格沒有事件卡。');
+  const active=drawForTile(state,tile,player.id);
   state.phase='manage';
-  return {dice,reels:[...reels],tile,draw:state.lastDraw,path,from:old};
+  return active;
 }
 export function adjustStaff(state,playerId,delta){
   if(state.status!=='playing'||state.phase!=='manage'||state.players[state.turnIndex].id!==playerId)throw Error('只能在自己的經營階段調整員工。');

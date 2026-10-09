@@ -25,8 +25,21 @@ h1,h2,h3,p{margin-top:0}h1,h2,h3{letter-spacing:-.025em}h1{font-size:clamp(38px,
 .slot-cell{height:var(--slot-cell);display:grid;place-items:center;font-size:32px;line-height:1;color:#137f74;font-weight:900}
 .slot-reel.spinning{border-color:#73e0b6;box-shadow:inset 0 3px 7px #153b2e1a,0 0 12px #6ce7aa99}
 .slot-total{font-size:12px;font-weight:800;color:#247f75;margin-bottom:11px}
+.card-scene{width:100%;height:100%;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;perspective:800px}
+.card-hint{margin:0!important;color:#477c73!important;font-size:12px;font-weight:800;letter-spacing:.06em}
+.draw-deck{position:relative;width:min(170px,55%);height:min(220px,58%);min-height:125px;padding:0;border:0;background:none;cursor:pointer;filter:drop-shadow(0 15px 15px #214d4a40)}
+.draw-deck:focus-visible,.card-continue:focus-visible{outline:3px solid #168b79;outline-offset:5px}
+.deck-shadow,.deck-back{position:absolute;inset:0;border-radius:15px}.deck-shadow{background:#b8d8cb;border:2px solid #fff;transform:translate(9px,7px) rotate(5deg);animation:deck-shuffle 1.9s ease-in-out infinite}.deck-back{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;color:#eaf8ef;background:repeating-linear-gradient(45deg,#146b68 0 8px,#197873 8px 16px);border:6px solid #e9f5ea;box-shadow:inset 0 0 0 2px #a9d4c1,inset 0 0 0 7px #17665f;animation:deck-float 1.9s ease-in-out infinite}.deck-back span{font-size:43px;line-height:1}.deck-back strong{font-size:20px;letter-spacing:.16em}.deck-back small{color:#eaf8ef;font-size:11px}
+.card-instruction{margin:0!important;font-size:11px;color:#667f78!important}
+.card-reveal{animation:card-flip .7s ease both}.revealed-card{width:min(270px,100%);max-height:75%;overflow:auto;padding:14px 13px;background:#fffef8;border:2px solid #d2bd86;border-radius:14px;box-shadow:0 10px 26px #3f53482c}.revealed-symbol{display:block;color:#b48c45;font-size:24px;line-height:1}.revealed-card h3{font-size:clamp(16px,2vw,23px);line-height:1.25;margin:4px 0 5px}.revealed-card p{font-size:11px;color:#687c79;margin:0 0 8px}.revealed-effects{display:flex;justify-content:center;flex-wrap:wrap;gap:5px}.revealed-effects .effect-chip{font-size:10px}.card-continue{background:#176f66;border:0;border-radius:8px;color:#fff;padding:8px 15px;font-size:12px;font-weight:800;cursor:pointer}
+@keyframes deck-float{0%,100%{transform:translateY(3px) rotate(-3deg)}50%{transform:translateY(-8px) rotate(3deg)}}
+@keyframes deck-shuffle{0%,100%{transform:translate(9px,7px) rotate(5deg)}50%{transform:translate(-9px,8px) rotate(-6deg)}}
+@keyframes card-flip{0%{transform:rotateY(90deg) scale(.84);opacity:.2}65%{transform:rotateY(-8deg) scale(1.03);opacity:1}100%{transform:rotateY(0) scale(1);opacity:1}}
 @media(max-width:760px){.slot-machine{gap:4px;padding:5px}.slot-reel{--slot-cell:42px;width:37px}.slot-cell{font-size:26px}.slot-total{font-size:10px;margin-bottom:5px}}
 @media(max-width:440px){.slot-reel{--slot-cell:34px;width:30px}.slot-cell{font-size:21px}.slot-machine{margin-bottom:4px}.board-center .center-icon{margin-bottom:2px}}
+@media(max-width:760px){.draw-deck{width:min(125px,56%);height:min(160px,58%);min-height:95px}.deck-back{border-width:4px;gap:3px}.deck-back span{font-size:29px}.deck-back strong{font-size:14px}.deck-back small,.card-instruction{font-size:9px}.revealed-card{padding:9px}.card-scene{gap:6px}.card-hint{font-size:10px}.card-continue{font-size:10px;padding:6px 10px}}
+@media(max-width:440px){.draw-deck{width:min(95px,58%);height:min(126px,55%);min-height:72px}.deck-back span{font-size:21px}.deck-back strong{font-size:11px}.deck-back small{font-size:8px}.card-instruction{display:none}.revealed-card{max-height:72%}.revealed-card h3{font-size:13px}.revealed-card p,.revealed-effects .effect-chip{font-size:8px}.revealed-symbol{font-size:17px}}
+@media(prefers-reduced-motion:reduce){.draw-deck,.deck-shadow,.card-reveal{animation:none}}
 @media(max-width:760px){.disclosure-panel summary{padding:16px}.disclosure-panel summary span{align-items:flex-start;flex-direction:column;gap:4px}.disclosure-panel summary em{line-height:1.45}.disclosure-content{padding:14px}}
 
 .top-actions .quiet.active{background:#e5f1ed;color:var(--teal-dark);font-weight:800}

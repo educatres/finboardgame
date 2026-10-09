@@ -1,5 +1,5 @@
 import {ROLES,METRICS,METRIC_LABELS,GLOBAL_EVENTS,PERSONAL_EVENTS,SECTOR_EVENTS,ALL_EVENTS,FED_RULES,BOARD} from './data.js';
-import {createGame,rollDice,movementPath,endTurn,adjustStaff,issueLoan,repayLoan,updateBadLoans,financials,companyPosition,effectBreakdown,eventRemaining,makeSnapshot,getEconomicSnapshot,getFedRuleEvaluations,getFedDecision,exportGame,importGame} from './engine.js';
+import {createGame,rollDice,drawEvent,movementPath,endTurn,adjustStaff,issueLoan,repayLoan,updateBadLoans,financials,companyPosition,effectBreakdown,eventRemaining,makeSnapshot,getEconomicSnapshot,getFedRuleEvaluations,getFedDecision,exportGame,importGame} from './engine.js';
 import {syncInfo,isNewerGame} from './sync.js';
 
 const $=s=>document.querySelector(s),h=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -27,6 +27,7 @@ let channel=null;
 try{if('BroadcastChannel' in globalThis)channel=new BroadcastChannel(storageKey)}catch{}
 let state=null,page='home',tab='business',snapshotSelection='latest',setupPlayers=[{name:'玩家 1',roleId:'auto'},{name:'玩家 2',roleId:'electronics'}],toastTimer,resetAt=0;
 let animation=null,animationSerial=0;
+let dismissedCardKey=null;
 const MOVE_MS=1000;
 try{const view=JSON.parse(sessionStorage.getItem(viewKey));if(['business','events','dashboard','fed','history'].includes(view?.tab))tab=view.tab;if(typeof view?.snapshotSelection==='string')snapshotSelection=view.snapshotSelection}catch{}
 function rememberView(){try{sessionStorage.setItem(viewKey,JSON.stringify({tab,snapshotSelection}))}catch{}}
@@ -54,7 +55,7 @@ function clearSave(){
 function adoptShared(incoming){
   if(!isNewerGame(incoming,state))return false;
   const previous=state;
-  const sharedRoll=previous&&syncInfo(previous).gameId===syncInfo(incoming).gameId&&previous.round===incoming.round&&previous.phase==='roll'&&incoming.phase==='manage'&&previous.turnIndex===incoming.turnIndex&&Number.isInteger(incoming.dice);
+  const sharedRoll=previous&&syncInfo(previous).gameId===syncInfo(incoming).gameId&&previous.round===incoming.round&&previous.phase==='roll'&&['draw','manage'].includes(incoming.phase)&&previous.turnIndex===incoming.turnIndex&&Number.isInteger(incoming.dice);
   const from=sharedRoll?previous.players[previous.turnIndex].position:null;
   cancelAnimation();state=incoming;render();
   $('#save-status').textContent='已從其他頁籤同步';
@@ -100,6 +101,24 @@ function currentPlayer(){return state?.players[state.turnIndex]}
 function boardCoords(i){if(i<=6)return [1,i+1];if(i<=12)return [i-5,7];if(i<=18)return [7,19-i];return [25-i,1]}
 function sectorForTile(i){const sectors=['製造業','消費業','金融業','能源與運輸','民生業','科技業'];return sectors[((Math.floor((i-3)/3)%6)+6)%6]}
 function tileName(tile,i){return tile.type==='sector'?sectorForTile(i):tile.label}
+function currentCard(){
+  if(state.phase!=='manage'||!state.lastDraw||!state.dice)return null;
+  const card=state.lastDraw;
+  if(card.startedRound!==state.round||card.ownerId&&card.ownerId!==currentPlayer().id)return null;
+  const key=`${state.sync?.gameId||'local'}:${state.round}:${state.turnIndex}:${card.instanceId}`;
+  return key===dismissedCardKey?null:{card,key,event:event(card.eventId)};
+}
+function cardCenter(){
+  if(!animation&&state.phase==='draw')return `<div class="card-scene"><p class="card-hint">停在事件格 · 輪到你抽卡</p><button class="draw-deck" type="button" data-action="draw-card" aria-label="點擊抽事件卡"><span class="deck-shadow" aria-hidden="true"></span><span class="deck-back"><span>✦</span><strong>事件卡</strong><small>點一下抽卡</small></span></button><p class="card-instruction">卡片正在洗牌，點擊卡背翻開結果</p></div>`;
+  const shown=!animation&&currentCard();
+  if(shown){
+    const {card,event:e}=shown;
+    const target=card.scope==='global'?'所有適用企業':card.scope==='sector'?`${card.sector}所有企業`:'只有抽卡玩家';
+    const effects=e.effects.map(x=>`<span class="effect-chip">${h(METRIC_LABELS[x.metric])} ${x.pct>=0?'+':''}${x.pct}%</span>`).join('');
+    return `<div class="card-scene card-reveal" role="status"><p class="card-hint">${h(scopes[card.scope])} · ${h(e.id)}</p><div class="revealed-card"><span class="revealed-symbol">✦</span><h3>${h(e.name)}</h3><p>影響 ${h(target)} · 持續 ${e.duration} 季</p><div class="revealed-effects">${effects}</div></div><button class="card-continue" type="button" data-action="dismiss-card">繼續經營 →</button></div>`;
+  }
+  return null;
+}
 function renderBoard(){
   const pos=state.players.map(p=>({p,index:animation?.playerId===p.id?animation.position:p.position}));
   const tiles=BOARD.map((tile,i)=>{
@@ -115,7 +134,7 @@ function renderBoard(){
     return `<span class="slot-reel ${spinning&&animation.spinning[i]?'spinning':''}" aria-label="第 ${i+1} 個轉輪：${value}"><span class="slot-strip" style="transform:translateY(-${position*100}%)">${cells}</span></span>`;
   }).join('');
   const total=spinning?'數字跳動中…':state.dice===null?'啟動拉霸前進':`前進 ${state.dice} 格`;
-  $('#board').innerHTML=tiles+`<div class="board-center"><div class="center-icon">⌁</div><h3>市場正在運轉</h3><p>三輪拉霸 · 逐格前進 · 每季結算</p><div class="slot-machine" role="group" aria-label="三個 0 到 3 的拉霸轉輪">${reels}</div><div class="slot-total">${total}</div><small>${spinning?'三個數字依序停止':animation?.stage==='result'?'結果已出現，稍後開始移動':state.dice===0?'本次停留原地，不抽事件卡':animation?.stage==='moving'?'棋子每秒前進一格':'經過起點可獲得 250 遊戲幣'}</small></div>`;
+  $('#board').innerHTML=tiles+`<div class="board-center">${cardCenter()||`<div class="center-icon">⌁</div><h3>市場正在運轉</h3><p>三輪拉霸 · 逐格前進 · 每季結算</p><div class="slot-machine" role="group" aria-label="三個 0 到 3 的拉霸轉輪">${reels}</div><div class="slot-total">${total}</div><small>${spinning?'三個數字依序停止':animation?.stage==='result'?'結果已出現，稍後開始移動':state.dice===0?'本次停留原地，不抽事件卡':animation?.stage==='moving'?'棋子每秒前進一格':'經過起點可獲得 250 遊戲幣'}</small>`}</div>`;
 }
 function actionRow(id,buttons,min=1){return `<div class="action-row"><input id="${id}" type="number" min="${min}" step="1" value="${id==='staff-count'?10:100}" aria-label="${id==='staff-count'?'人數':'金額'}">${buttons.map(([label,action])=>`<button type="button" data-action="${action}">${label}</button>`).join('')}</div>`}
 function renderTurn(){
@@ -125,6 +144,11 @@ function renderTurn(){
     const winners=state.players.filter(x=>state.winnerIds.includes(x.id)).map(x=>x.name).join('、');
     const cause=state.status==='bankruptcy'?'有玩家破產':state.status==='goal'?'有人達成淨資產目標':'到達季數上限';
     $('#turn-content').innerHTML=`<h2 class="turn-name">對局結束</h2><p class="turn-role">${cause}</p><p class="turn-meta">勝出：<strong>${h(winners||'無')}</strong></p><button class="secondary" data-action="new-game">再玩一局</button>`;
+    return;
+  }
+  if(state.phase==='draw'||currentCard()){
+    const waiting=state.phase==='draw';
+    $('#turn-content').innerHTML=`<h2 class="turn-name" style="color:${colors[p.color]}">${h(p.name)}</h2><p class="turn-role">${h(r.name)} · ${h(r.sector)}</p><div class="turn-steps"><span class="done"></span><span class="done"></span><span></span></div><p class="turn-meta">拉出 <strong>${state.reels.join(' + ')} = ${state.dice}</strong>，停在「${h(tileName(BOARD[p.position],p.position))}」。${waiting?'請點棋盤中央流動的卡片，親手抽出事件。':'事件已翻開。看完卡片後，按「繼續經營」。'}</p>`;
     return;
   }
   $('#turn-content').innerHTML=`<h2 class="turn-name" style="color:${colors[p.color]}">${h(p.name)}</h2><p class="turn-role">${h(r.name)} · ${h(r.sector)}</p><div class="turn-steps"><span class="done"></span><span class="${done?'done':''}"></span><span></span></div>${!done?`<p class="turn-meta">輪到你啟動拉霸。三個轉輪各顯示 0–3，相加就是前進格數。</p><button class="primary" data-action="roll">啟動拉霸　▦</button>`:`<p class="turn-meta">拉出 <strong>${state.reels?.join(' + ')||'舊回合'} = ${state.dice}</strong>，停在「${h(tileName(BOARD[p.position],p.position))}」。${state.dice===0?'本次原地停留，不抽事件卡。':'完成經營後交給下一位玩家。'}</p><div class="action-block"><h4>員工調整 · 目前 ${state.companies[p.roleId].headcount} 人</h4><p>聘僱與裁員會改變全市場失業率及本企業人力成本。</p>${actionRow('staff-count',[['聘僱','hire'],['裁員','layoff']])}</div><div class="action-block"><h4>銀行借貸 · 未償 ${money(state.companies[p.roleId].debt)}</h4><p>借款增加現金與負債，不計入收入。銀行流動資產 ${money(state.bank.liquidAssets)}。</p>${actionRow('loan-amount',[['借款','loan'],['還款','repay']])}</div>${p.roleId==='bank'?`<div class="action-block"><h4>銀行壞帳</h4><p>目前不良放款 ${money(state.bank.nonperformingLoans)}。</p>${actionRow('bad-amount',[['認列','mark-bad'],['收回','recover-bad']])}</div>`:''}<button class="secondary" style="margin-top:18px" data-action="end-turn">${state.turnIndex===state.players.length-1?'結算本季 →':'交給下一位 →'}</button>`}`;
@@ -225,9 +249,9 @@ function moveTokenStep(position){
     token.style.transform='translate(0,0)';
   });
 }
-function beginRollAnimation({playerId,from,dice,reels},showDraw=false,draw=null){
+function beginRollAnimation({playerId,from,dice,reels}){
   if(!state||state.players[state.turnIndex]?.id!==playerId||state.dice!==dice)return;
-  if(document.hidden||tab!=='business'||page!=='game'){if(showDraw&&tab==='business'&&page==='game')showCard(draw);return}
+  if(document.hidden||tab!=='business'||page!=='game')return;
   cancelAnimation();
   const serial=animationSerial;
   const finalReels=Array.isArray(reels)&&reels.length===3?reels:[0,0,0];
@@ -268,7 +292,6 @@ function beginRollAnimation({playerId,from,dice,reels},showDraw=false,draw=null)
     if(dice===0)await pause(400);
     if(serial!==animationSerial)return;
     animation=null;renderBoard();renderTurn();
-    if(showDraw&&tab==='business'&&page==='game')showCard(draw);
   })();
 }
 
@@ -281,7 +304,7 @@ async function rollWithAnimation(){
       const player=currentPlayer();from=player.position;playerId=player.id;
       result=rollDice(state);save();render();
     });
-    if(result)beginRollAnimation({playerId,from,dice:result.dice,reels:result.reels},true,result.draw);
+    if(result)beginRollAnimation({playerId,from,dice:result.dice,reels:result.reels});
   }catch(e){notify(e.message||'無法啟動拉霸')}
 }
 
@@ -298,6 +321,9 @@ $('#game').addEventListener('click',e=>{
   if(action==='new-game'){void resetGame();return}
   if(action==='roll'){void rollWithAnimation();return}
   if(animation)return;
+  if(action==='draw-card'){void run(()=>drawEvent(state));return}
+  if(action==='dismiss-card'){dismissedCardKey=currentCard()?.key||null;renderBoard();renderTurn();return}
+  if(state.phase==='draw'||currentCard())return;
   if(action==='end-turn'){run(()=>{const result=endTurn(state);if(result){snapshotSelection='latest';rememberView();notify(result.finished?'對局結束，請查看勝負結果。':`第 ${result.snapshot.round} 季已結算。`)}});return}
   const numberId=['hire','layoff'].includes(action)?'#staff-count':['loan','repay'].includes(action)?'#loan-amount':'#bad-amount';
   const n=Number($(numberId)?.value);
